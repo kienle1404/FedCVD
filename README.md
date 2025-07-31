@@ -166,10 +166,10 @@ You can use the following scripts to set up the environment:
 
 ```bash
 cd code/FedCVD/
-conda create -n fedcvd_env python=3.11 -y
+conda create -n fedcvd_env python=3.12 -y
 conda activate fedcvd_env
 pip install -r requirements.txt
 ```
 
 ## Usage
-You can run the scripts in the `code/FedCVD/scripts` directory to reproduce our experiments.
+You can run the scripts in the `code/FedCVD/scripts` directory to reproduce our experiments and add new algorithms.
