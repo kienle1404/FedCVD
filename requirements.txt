@@ -19,4 +19,5 @@ tqdm
 torchmetrics
 wandb
 scikit-image
-
+monai
+einops
