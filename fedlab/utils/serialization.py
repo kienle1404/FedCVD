@@ -11,152 +11,155 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from typing import Literal, List, Union
+from collections import OrderedDict
+from torch.nn import Module
 import torch
 
 
+def _process_keys(keys: List[str], include_keys: Union[str, List[str], None], filter_keys: Union[str, List[str], None]) -> tuple[List[str], List[str]]:
+    """
+    Helper function to determine the final list of keys to keep based on include/filter rules.
+    """
+    # 1. Normalize inputs
+    if include_keys is None:
+        include_keys = []
+    elif isinstance(include_keys, str):
+        include_keys = [include_keys]
+
+    if filter_keys is None:
+        filter_keys = []
+    elif isinstance(filter_keys, str):
+        filter_keys = [filter_keys]
+
+    final_keys = []
+    skipped_keys = []
+
+    # 2. Iterate and apply rules
+    for key in keys:
+        keep = True
+
+        # Rule A: Check inclusion (if include_keys is non-empty)
+        # If include_keys is provided, a key must start with at least one include_key
+        if include_keys and not any(i in key for i in include_keys):
+            keep = False
+
+        # Rule B: Check exclusion (filter_keys always takes precedence over inclusion)
+        # A key must NOT start with any filter_key
+        if keep and any(f in key for f in filter_keys):
+            keep = False
+
+        if keep:
+            final_keys.append(key)
+        else:
+            skipped_keys.append(key)
+
+    return final_keys, skipped_keys
+
 class SerializationTool(object):
     @staticmethod
-    def serialize_model_gradients(model: torch.nn.Module, cpu: bool = True) -> torch.Tensor:
-        """Vectorize model gradients.
+    def serialize_model(
+        model: Module,
+        filter_keys: Union[str, List[str], None] = None,
+        include_keys: Union[str, List[str], None] = None, # NEW PARAMETER
+        cpu: bool = True
+    ) -> OrderedDict:
+        """
+        Serializes the model's parameters into a new OrderedDict, with options
+        for including and filtering layers and moving to CPU.
 
         Args:
-            model (torch.nn.Module): Model with gradients.
-            cpu (bool, optional): Whether move the vectorized parameter to ``torch.device('cpu')`` by force. Defaults to ``True``. If ``cpu`` is ``False``, the returned vector is on the same device as ``model``.
+            model (torch.nn.Module): The model to serialize.
+            filter_keys (Union[str, List[str], None]): Keys to skip serialization (Exclusion rule).
+            include_keys (Union[str, List[str], None]): Keys to include (Inclusion rule). If provided,
+                                                       only keys matching this and not matching filter_keys will be serialized.
+            cpu (bool): If True, all tensors in the serialized dictionary will be moved to the CPU.
 
         Returns:
-            torch.Tensor: Vectorized model gradients. Only contains trainable parameters.
+            OrderedDict: A deep copy of the filtered and serialized model state_dict.
         """
-        gradients = [param.grad.data.view(-1) for param in model.parameters()]
-        m_gradients = torch.cat(gradients)
-        if cpu:
-            m_gradients = m_gradients.cpu()
+        print(f"Starting to serialize model parameters to OrderedDict.")
 
-        return m_gradients
+        all_keys = list(model.state_dict().keys())
+        keys_to_serialize, skipped_keys = _process_keys(all_keys, include_keys, filter_keys)
+
+        serialized_model_dict = OrderedDict()
+
+        for key in keys_to_serialize:
+            param = model.state_dict()[key]
+            param_copy = param.data.clone()
+
+            if cpu:
+                param_copy = param_copy.cpu()
+
+            serialized_model_dict[key] = param_copy
+
+        if skipped_keys:
+            print(f"Skipping layers with name: [{', '.join(skipped_keys)}]")
+        print(f"Successfully serialized parameters to OrderedDict. Total parameters serialized: {len(serialized_model_dict)}")
+        return serialized_model_dict
 
     @staticmethod
-    def deserialize_model_gradients(model: torch.nn.Module, gradients: torch.Tensor) -> None:
-        """Deserialize vectorized ``gradients`` into ``model``'s ``param.grad.data`` for each trainable parameter.
+    def deserialize_model(
+        model: Module,
+        serialized_model_dict: OrderedDict,
+        mode: Literal["copy", "add", "sub"] = "copy",
+        filter_keys: Union[str, List[str], None] = None,
+        include_keys: Union[str, List[str], None] = None # NEW PARAMETER
+    ) -> None:
+        """
+        Deserializes and assigns parameters from an OrderedDict to the model.
 
         Args:
-            model (torch.nn.Module): Model.
-            gradients (torch.Tensor): Vectorized gradients for single model.
+            model (torch.nn.Module): The model to assign the parameters to.
+            serialized_model_dict (OrderedDict): The serialized model parameters.
+            mode (str): The mode of deserialization. "copy" copies the parameters.
+            filter_keys (Union[str, List[str], None]): Keys to skip deserialization (Exclusion rule).
+            include_keys (Union[str, List[str], None]): Keys to include (Inclusion rule).
         """
-        idx = 0
-        for parameter in model.parameters():
-            layer_size = parameter.grad.numel()
-            shape = parameter.grad.shape
+        print("Starting to deserialize parameters from OrderedDict.")
 
-            parameter.grad.data[:] = gradients[idx:idx + layer_size].view(shape)[:]
-            idx += layer_size
+        # 1. Determine which keys from the serialized dictionary should be used
+        all_serialized_keys = list(serialized_model_dict.keys())
+        keys_to_deserialize, skipped_by_filter = _process_keys(all_serialized_keys, include_keys, filter_keys)
 
-    @staticmethod
-    def serialize_model(model: torch.nn.Module, cpu: bool = True) -> torch.Tensor:
-        """Unfold model parameters, including trainable as well as untrainable parameters.
+        # Create the final state_dict to load/use
+        target_state_dict = OrderedDict({key: serialized_model_dict[key] for key in keys_to_deserialize})
 
-        Unfold every layer of model, concate all of tensors into one vector.
-        Return a `torch.Tensor` with shape ``(d, )``, where ``d`` is the total number of parameters in ``model``, including trainable as well as untrainable parameters.
+        if mode == "copy":
+            try:
+                mismatched_keys = model.load_state_dict(target_state_dict, strict=False)
 
-        Please note that we update the implementation.
-        Current version of serialization includes the parameters in batchnorm layers.
+                # Log keys skipped by user's filter
+                if skipped_by_filter:
+                    print(f"Skipping layers (user filter/include): [{', '.join(skipped_by_filter)}]")
 
-        Args:
-            model (torch.nn.Module): model to serialize.
-            cpu (bool, optional): Whether move the vectorized parameter to ``torch.device('cpu')`` by force. Defaults to ``True``. If ``cpu`` is ``False``, the returned vector is on the same device as ``model``.
-        """
-        parameters = [param.data.view(-1) for param in model.state_dict().values()]
-        m_parameters = torch.cat(parameters)
-        if cpu:
-            m_parameters = m_parameters.cpu()
+                # Log keys missed because they were not serialized
+                if mismatched_keys.missing_keys:
+                    print(f"The following layers were not found in the serialized dictionary: [{','.join(mismatched_keys.missing_keys)}]")
 
-        return m_parameters
+                # Log unexpected keys
+                if mismatched_keys.unexpected_keys:
+                    print(f"The following layers were unexpected in the model and will be ignored: [{','.join(mismatched_keys.unexpected_keys)}]")
 
-    @staticmethod
-    def deserialize_model(model: torch.nn.Module,
-                          serialized_parameters: torch.Tensor,
-                          mode="copy"):
-        """Assigns serialized parameters to parameters in ``model.state_dict()``, which includes both trainable parameters and untrainable parameters.
-        This is done by iterating through ``model.state_dict()`` and assigning the relevant values with the same dimension as the ``model.state_dict()``.
-        NOTE: this function manipulates ``model.state_dict()``.
+                print(f"Parameters have been successfully copied to the model. Total layers updated: {len(target_state_dict)}")
+            except RuntimeError as e:
+                raise e
+        else:
+            # For 'add' and 'sub' modes, iterate over the model's state_dict keys
+            for key in model.state_dict().keys():
+                if key in target_state_dict:
+                    current_param = model.state_dict()[key].data
+                    target_param = target_state_dict[key].to(current_param.device).data
 
-        Args:
-            model (torch.nn.Module): model to deserialize.
-            serialized_parameters (torch.Tensor): serialized model parameters.
-            mode (str): deserialize mode. Support "copy", "add", and "sub".
-        """
-        current_index = 0  # keep track of where to read from grad_update
+                    if mode == "add":
+                        current_param.add_(target_param)
+                    elif mode == "sub":
+                        current_param.sub_(target_param)
+                    else:
+                        raise ValueError(f"Invalid deserialize mode {mode}, require \"copy\", \"add\" or \"sub\"!")
+                # Note: We rely on the loguru logger warnings from 'copy' mode or manual logging for skipped/missing keys
 
-        for param in model.state_dict().values():
-            numel = param.numel()
-            size = param.size()
-            if mode == "copy":
-                param.copy_(
-                    serialized_parameters[current_index:current_index +
-                                                        numel].view(size))
-            elif mode == "add":
-                param.add_(
-                    serialized_parameters[current_index:current_index +
-                                                        numel].view(size))
-            elif mode == "sub":
-                param.sub_(
-                    serialized_parameters[current_index:current_index +
-                                                        numel].view(size))
-            else:
-                raise ValueError(
-                    "Invalid deserialize mode {}, require \"copy\", \"add\" or \"sub\" "
-                    .format(mode))
-            current_index += numel
-
-    @staticmethod
-    def serialize_trainable_model(model: torch.nn.Module, cpu: bool = True) -> torch.Tensor:
-        """Unfold trainable model parameters.
-
-        Unfold every layer of model by iterating though ``model.parameters()``,  then concate all of tensors into one vector.
-        Return a `torch.Tensor` with shape (size, ).
-
-        Args:
-            model (torch.nn.Module): model to serialize.
-            cpu (bool, optional): Whether move the vectorized parameter to ``torch.device('cpu')`` by force. Defaults to ``True``. If ``cpu`` is ``False``, the returned vector is on the same device as ``model``.
-        """
-
-        parameters = [param.data.view(-1) for param in model.parameters()]
-        m_parameters = torch.cat(parameters)
-        if cpu:
-            m_parameters = m_parameters.cpu()
-
-        return m_parameters
-
-    @staticmethod
-    def deserialize_trainable_model(model: torch.nn.Module,
-                                    serialized_parameters: torch.Tensor,
-                                    mode="copy"):
-        """Assigns serialized trainable parameters to ``model.parameters``.
-        This is done by iterating through ``model.parameters()`` and assigning the relevant params in ``grad_update``.
-        NOTE: this function manipulates ``model.parameters()``.
-
-        Args:
-            model (torch.nn.Module): model to deserialize.
-            serialized_parameters (torch.Tensor): serialized model parameters.
-            mode (str): deserialize mode. Support "copy", "add", and "sub".
-        """
-        current_index = 0  # keep track of where to read from grad_update
-        for parameter in model.parameters():
-            numel = parameter.data.numel()
-            size = parameter.data.size()
-            if mode == "copy":
-                parameter.data.copy_(
-                    serialized_parameters[current_index:current_index +
-                                                        numel].view(size))
-            elif mode == "add":
-                parameter.data.add_(
-                    serialized_parameters[current_index:current_index +
-                                                        numel].view(size))
-            elif mode == "sub":
-                parameter.data.sub_(
-                    serialized_parameters[current_index:current_index +
-                                                        numel].view(size))
-            else:
-                raise ValueError(
-                    "Invalid deserialize mode {}, require \"copy\", \"add\" or \"sub\" "
-                    .format(mode))
-            current_index += numel
+            if skipped_by_filter:
+                print(f"Skipping layers (user filter/include): [{', '.join(skipped_by_filter)}]")
+            print(f"Successfully deserialized parameters from OrderedDict with mode '{mode}'.")

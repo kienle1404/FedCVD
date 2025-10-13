@@ -10,17 +10,32 @@ class DoubleConv(nn.Module):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
+        self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(mid_channels)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.relu2 = nn.ReLU(inplace=True)
+        # self.double_conv = nn.Sequential(
+        #     nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(mid_channels),
+        #     nn.ReLU(inplace=True),
+        #     nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(out_channels),
+        #     nn.ReLU(inplace=True)
+        # )
 
     def forward(self, x):
-        return self.double_conv(x)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        return x
+
+
+
 
 
 class Down(nn.Module):
@@ -28,13 +43,17 @@ class Down(nn.Module):
 
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.maxpool_conv = nn.Sequential(
-            nn.MaxPool2d(2),
-            DoubleConv(in_channels, out_channels)
-        )
+        self.maxpool = nn.MaxPool2d(2)
+        self.conv = DoubleConv(in_channels, out_channels)
+        # self.maxpool_conv = nn.Sequential(
+        #     nn.MaxPool2d(2),
+        #     DoubleConv(in_channels, out_channels)
+        # )
 
     def forward(self, x):
-        return self.maxpool_conv(x)
+        x = self.maxpool(x)
+        x = self.conv(x)
+        return x
 
 
 class Up(nn.Module):
@@ -89,7 +108,7 @@ class Unet(nn.Module):
         self.up2 = (Up(512, 256 // factor, bilinear))
         self.up3 = (Up(256, 128 // factor, bilinear))
         self.up4 = (Up(128, 64, bilinear))
-        self.out = (OutConv(64, n_classes))
+        self.classifier = (OutConv(64, n_classes))
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -101,7 +120,7 @@ class Unet(nn.Module):
         x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
-        out = self.out(x)
+        out = self.classifier(x)
         return out
 
 def unet(n_channels=1, n_classes=4, bilinear=False):
@@ -110,6 +129,4 @@ def unet(n_channels=1, n_classes=4, bilinear=False):
 
 if __name__ == "__main__":
     model = unet()
-    print(model)
-    x = torch.randn(1, 1, 112, 112)
-    print(model(x).shape)
+    print(model.state_dict().keys())

@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Literal, List, Union
+from collections import OrderedDict
+from torch.nn import Module
+from matching.pfnm_communication import layer_group_descent as pdm_iterative_layer_group_descent
+from matching.pfnm_communication import build_init as pdm_build_init
+from matching.gaus_marginal_matching import match_local_atoms
+from matching.pfnm import layer_group_descent as pdm_multilayer_group_descent
 import torch
 
 
@@ -39,10 +46,19 @@ class Aggregators(object):
 
         weights = weights / torch.sum(weights)
         assert torch.all(weights >= 0), "weights should be non-negative values"
-        serialized_parameters = torch.sum(
-            torch.stack(serialized_params_list, dim=-1) * weights, dim=-1)
 
-        return serialized_parameters
+        first_client_dict = serialized_params_list[0]
+        aggregated_dict = OrderedDict()
+        for key in first_client_dict.keys():
+            # Robustness Check (Optional, but highly recommended for FL)
+            if not all(key in client_dict for client_dict in serialized_params_list):
+                raise KeyError(f"Key '{key}' not found in all client parameter dictionaries.")
+            param_tensors = [client_dict[key].to(torch.float32) for client_dict in serialized_params_list]
+            aggregated_tensor = torch.sum(torch.stack(param_tensors, dim=-1) * weights, dim=-1)
+            original_dtype = serialized_params_list[0][key].dtype
+            aggregated_dict[key] = aggregated_tensor.to(original_dtype)
+
+        return aggregated_dict
 
     @staticmethod
     def fedasync_aggregate(server_param, new_param, alpha):
