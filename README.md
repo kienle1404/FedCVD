@@ -173,3 +173,13 @@ pip install -r requirements.txt
 
 ## Usage
 You can run the scripts in the `code/FedCVD/scripts` directory to reproduce our experiments and add new algorithms.
+
+## Extension to new models, datasets and algorithms
+### New Models
+You can add new models in the `code/FedCVD/models` directory. Then just import and use the new model in the corresponding training script.
+
+### New Datasets
+You don't need to change your dataset preprocessing logic, just make sure you provide the `DataLoader` as a list of `torch.utils.data.DataLoader` for each client in the training script. Each element in the list corresponds to a client.
+
+### New Algorithms
+You can add new algorithms in the `code/FedCVD/algorithms` directory. You only need to extend the `FedAvgServerHandler` and `FedAvgSerialClientTrainer` classes in `code/FedCVD/algorithms/fedavg.py` and override three important methods: `global_update`, `local_update` and `train`to implement your own algorithm. Then just import and use the new algorithm in the corresponding training script.
