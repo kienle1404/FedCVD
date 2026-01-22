@@ -1,0 +1,95 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            r0m282imhd1gu8jgoyn4gjtpava4mxtg:
+                args:
+                    - --batch_size
+                    - "32"
+                    - --lr
+                    - "0.1"
+                    - --seed
+                    - "42"
+                    - --input_path
+                    - C:/Users/kl23a/Documents/Working/FedCVD/code/FedCVD/scripts/ecg/../../../../data
+                    - --output_path
+                    - C:/Users/kl23a/Documents/Working/FedCVD/code/FedCVD/scripts/ecg/../../../../output
+                    - --max_epoch
+                    - "1"
+                    - --communication_round
+                    - "50"
+                codePath: code\FedCVD\trainers\fedavg_ecg.py
+                codePathLocal: trainers\fedavg_ecg.py
+                cpu_count: 24
+                cpu_count_logical: 24
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "1013310287872"
+                        used: "224715034624"
+                email: lekien140405@gmail.com
+                executable: C:\Users\kl23a\.conda\envs\fedcvd_env\python.exe
+                git:
+                    commit: e7d1e03fff0dacdad22c51bc705a4591534748db
+                    remote: https://github.com/SMILELab-FL/FedCVD.git
+                gpu: NVIDIA GeForce RTX 5080
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 10752
+                      memoryTotal: "17094934528"
+                      name: NVIDIA GeForce RTX 5080
+                      uuid: GPU-b62e4ca1-4ffc-4067-a225-c2ca2e69cd48
+                host: CAPS-14QKMD4
+                memory:
+                    total: "68135153664"
+                os: Windows-11-10.0.26200-SP0
+                program: C:\Users\kl23a\Documents\Working\FedCVD\code\FedCVD\trainers\fedavg_ecg.py
+                python: CPython 3.12.12
+                root: C:\Users\kl23a\Documents\Working\FedCVD\code\FedCVD
+                startedAt: "2026-01-12T23:37:08.776060Z"
+                writerId: r0m282imhd1gu8jgoyn4gjtpava4mxtg
+        m: []
+        python_version: 3.12.12
+        t:
+            "1":
+                - 1
+                - 5
+                - 41
+                - 48
+                - 53
+            "2":
+                - 1
+                - 5
+                - 41
+                - 48
+                - 53
+            "3":
+                - 13
+                - 16
+            "4": 3.12.12
+            "5": 0.23.1
+            "8":
+                - 3
+            "12": 0.23.1
+            "13": windows-amd64
+batch_size:
+    value: 32
+client_lr:
+    value: 0.1
+communication_round:
+    value: 50
+criterion:
+    value: BCELoss
+dataset:
+    value: ECG
+max_epoch:
+    value: 1
+model:
+    value: resnet1d34
+num_clients:
+    value: 4
+sample_ratio:
+    value: 1
+seed:
+    value: 42
