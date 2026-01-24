@@ -6,8 +6,8 @@ if [ "${DIRNAME:0:1}" = "/" ];then
 else
     current_dir="$(pwd)"/"$(dirname "$DIRNAME")"
 fi
-#input_path="$current_dir"/../../../../data
-input_path="/data/zyk/data/dataset/"
+input_path="$current_dir"/../../../../data
+# input_path="/data/zyk/data/dataset/"
 output_path="$current_dir"/../../../../output
 seed=42
 batch_size=32
