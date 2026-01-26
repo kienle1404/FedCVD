@@ -33,6 +33,7 @@ parser.add_argument("--case_name", type=str, default="fedbn_ecg")
 parser.add_argument("--num_clients", type=int, default=4)
 parser.add_argument("--optimizer_name", type=str, default="SGD")
 parser.add_argument("--clients", type=list[str], default=["client1", "client2", "client3", "client4"])
+parser.add_argument("--data_fraction", type=float, default=1.0, help="Fraction of data to use (0.0-1.0)")
 
 import warnings
 
@@ -64,14 +65,16 @@ if __name__ == "__main__":
         base_path=f"{input_path}/ECG/preprocessed/",
         locations=clients,
         file_name="records.h5",
-        n_classes=20
+        n_classes=20,
+        frac=args.data_fraction
     ) for client in clients]
     test_datasets = [get_ecg_dataset(
         [f"{input_path}/ECG/preprocessed/{client}/test.csv"],
         base_path=f"{input_path}/ECG/preprocessed/",
         locations=clients,
         file_name="records.h5",
-        n_classes=20
+        n_classes=20,
+        frac=args.data_fraction
     ) for client in clients]
 
     train_loaders = [

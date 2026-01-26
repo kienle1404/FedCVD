@@ -162,5 +162,7 @@ cython_debug/
 #.idea/
 
 data
-output
+output/
+.claude
 code/FedCVD/wandb
+code/FedCVD/trainers/wandb

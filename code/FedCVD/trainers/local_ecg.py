@@ -30,6 +30,7 @@ parser.add_argument("--mode", type=str, default="local")
 parser.add_argument("--case_name", type=str, default="local_ecg")
 parser.add_argument("--optimizer_name", type=str, default="SGD")
 parser.add_argument("--clients", type=list[str], default=["client1", "client2", "client3", "client4"])
+parser.add_argument("--data_fraction", type=float, default=1.0, help="Fraction of data to use (0.0-1.0)")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -49,7 +50,8 @@ if __name__ == "__main__":
         base_path=f"{input_path}/ECG/preprocessed/",
         locations=[client],
         file_name="records.h5",
-        n_classes=20
+        n_classes=20,
+        frac=args.data_fraction
     ) for client in clients]
 
 
@@ -62,7 +64,8 @@ if __name__ == "__main__":
             base_path=f"{input_path}/ECG/preprocessed/",
             locations=[client],
             file_name="records.h5",
-            n_classes=20
+            n_classes=20,
+            frac=args.data_fraction
         )
         output_path = base_output_path + args.model + "/" + args.mode + "/" + client + "/" + datetime.now().strftime("%Y%m%d%H%M%S") + "/"
         guarantee_path(output_path)
