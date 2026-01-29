@@ -262,8 +262,19 @@ class DualAttentionResNet1D(Module):
           → Output (batch, 20) multi-label predictions
     """
     def __init__(self, input_channels=12, d_model=512, num_transformer_blocks=2,
-                 num_heads=8, ff_dim=2048, dropout=0.1, num_classes=20, task='multilabel'):
+                 num_heads=8, global_heads=None, ff_dim=2048, dropout=0.1,
+                 num_classes=20, task='multilabel'):
         super(DualAttentionResNet1D, self).__init__()
+
+        # Handle global_heads configuration
+        if global_heads is None:
+            global_heads = num_heads // 2  # Default: 50-50 split (backward compatible)
+        local_heads = num_heads - global_heads
+
+        # Store head configuration
+        self.global_heads = global_heads
+        self.local_heads = local_heads
+        self.num_heads = num_heads
 
         # ResNet feature extractor (GLOBAL - aggregated in FL)
         self.feature_extractor = ResNet1DFeatureExtractor(input_channels)
@@ -276,8 +287,8 @@ class DualAttentionResNet1D(Module):
             DualAttentionTransformerBlock(
                 d_model=d_model,
                 num_heads=num_heads,
-                global_heads=num_heads // 2,  # 4 global heads
-                local_heads=num_heads // 2,   # 4 local heads
+                global_heads=global_heads,
+                local_heads=local_heads,
                 ff_dim=ff_dim,
                 dropout=dropout
             )
@@ -333,8 +344,8 @@ class DualAttentionResNet1D(Module):
 
 
 def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_blocks=2,
-                            num_heads=8, ff_dim=2048, dropout=0.1, num_classes=20,
-                            task='multilabel'):
+                            num_heads=8, global_heads=None, ff_dim=2048, dropout=0.1,
+                            num_classes=20, task='multilabel'):
     """
     Factory function to create a DualAttentionResNet1D model.
 
@@ -342,7 +353,10 @@ def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_bloc
         input_channels: Number of input channels (default: 12 for 12-lead ECG)
         d_model: Transformer embedding dimension (default: 512)
         num_transformer_blocks: Number of dual attention blocks (default: 2)
-        num_heads: Total attention heads (split equally into global/local)
+        num_heads: Total attention heads (default: 8)
+        global_heads: Number of global attention heads (default: None = num_heads // 2).
+                      Local heads = num_heads - global_heads.
+                      Valid configurations: 4-4, 5-3, 6-2, 7-1 (global-local)
         ff_dim: Feed-forward network dimension (default: 2048)
         dropout: Dropout rate (default: 0.1)
         num_classes: Number of output classes (default: 20)
@@ -352,7 +366,8 @@ def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_bloc
         model: DualAttentionResNet1D instance
 
     Example:
-        >>> model = dual_attention_resnet1d()
+        >>> model = dual_attention_resnet1d()  # Default 4-4 split
+        >>> model = dual_attention_resnet1d(global_heads=6)  # 6-2 split
         >>> x = torch.randn(8, 12, 5000)
         >>> y = model(x)
         >>> print(y.shape)  # torch.Size([8, 20])
@@ -362,6 +377,7 @@ def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_bloc
         d_model=d_model,
         num_transformer_blocks=num_transformer_blocks,
         num_heads=num_heads,
+        global_heads=global_heads,
         ff_dim=ff_dim,
         dropout=dropout,
         num_classes=num_classes,
