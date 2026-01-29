@@ -1,4 +1,5 @@
 
+from collections import OrderedDict
 from copy import deepcopy
 from algorithm.ecg.fedavg import FedAvgServerHandler, FedAvgSerialClientTrainer
 from utils.evaluation import calculate_accuracy, calculate_multilabel_metrics, get_pred_label, transfer_tensor_to_numpy
@@ -12,6 +13,28 @@ import tqdm
 import pandas as pd
 import numpy as np
 import wandb
+
+
+def _sub_ordered_dicts(a: OrderedDict, b: OrderedDict) -> OrderedDict:
+    """Element-wise subtraction of two OrderedDicts."""
+    return OrderedDict({k: a[k] - b[k] for k in a.keys()})
+
+
+def _scale_ordered_dict(d: OrderedDict, scale: float) -> OrderedDict:
+    """Scale all tensors in an OrderedDict by a scalar."""
+    return OrderedDict({k: scale * v for k, v in d.items()})
+
+
+def _add_ordered_dicts(a: OrderedDict, b: OrderedDict) -> OrderedDict:
+    """Element-wise addition of two OrderedDicts."""
+    return OrderedDict({k: a[k] + b[k] for k in a.keys()})
+
+
+def _ordered_dicts_equal(a: OrderedDict, b: OrderedDict) -> bool:
+    """Check if two OrderedDicts have equal tensors."""
+    if a.keys() != b.keys():
+        return False
+    return all(torch.equal(a[k], b[k]) for k in a.keys())
 
 
 class FedInitServerHandler(FedAvgServerHandler):
@@ -62,7 +85,10 @@ class FedInitSerialClientTrainer(FedAvgSerialClientTrainer):
         pack = None
         for idx in id_list:
             global_model = payload[0]
-            model_parameters = global_model + self.beta * (global_model - self.local_models[idx])
+            # FedInit: model_parameters = global + beta * (global - local)
+            diff = _sub_ordered_dicts(global_model, self.local_models[idx])
+            scaled_diff = _scale_ordered_dict(diff, self.beta)
+            model_parameters = _add_ordered_dicts(global_model, scaled_diff)
             self.set_model(model_parameters)
             for epoch in range(self.max_epoch):
                 pack = self.train(epoch, idx)
@@ -70,7 +96,7 @@ class FedInitSerialClientTrainer(FedAvgSerialClientTrainer):
                 # self.global_test(idx, epoch)
             self.local_models[idx] = self.model_parameters
             self.cache.append(pack)
-            assert torch.equal(pack[0], self.local_models[idx])
+            assert _ordered_dicts_equal(pack[0], self.local_models[idx])
             torch.save(
                 {
                     "model": self._model.state_dict(),

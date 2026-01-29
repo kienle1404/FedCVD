@@ -6,24 +6,20 @@ if [ "${DIRNAME:0:1}" = "/" ];then
 else
     current_dir="$(pwd)"/"$(dirname "$DIRNAME")"
 fi
-#input_path="$current_dir"/../../../../data
-input_path="/data/zyk/data/dataset/"
-output_path="$current_dir"/../../../output/
+input_path="$current_dir"/../../../../data
+output_path="$current_dir"/../../../../output
 seed=42
 batch_size=32
 lrs=(0.1)
 #lambdas=(0.1 0.3 0.7 0.9)
-lambdas=(0.5)
-gammas=(0 0.5 0.9)
+lambdas=(0.1)
+gammas=(0)
 max_epoch=1
 communication_round=50
 
 for lr in "${lrs[@]}"; do
     for lambda in "${lambdas[@]}"; do
       for gamma in "${gammas[@]}"; do
-      if [ "$lambda" == 0.1 ] && [ "$gamma" == 0 ]; then
-        continue
-      fi
         case_name="fedsm-batch_size=${batch_size}-lr=${lr}-lambda=${lambda}-gamma=${gamma}-seed=${seed}"
         python "$current_dir"/../../trainers/fedsm_ecg.py  --batch_size $batch_size \
                                                             --lr $lr \

@@ -129,7 +129,7 @@ if __name__ == "__main__":
         output_path=output_path,
         evaluators=client_evaluators,
         optimizer_name=args.optimizer_name,
-        device=torch.device("cuda:2" if torch.cuda.is_available() else "cpu"),
+        device=None,
         logger=client_loggers
     )
 
@@ -142,7 +142,7 @@ if __name__ == "__main__":
         communication_round=communication_round,
         num_clients=num_clients,
         sample_ratio=1,
-        device=torch.device("cuda:2" if torch.cuda.is_available() else "cpu"),
+        device=None,
         logger=server_logger
     )
     standalone = Pipeline(handler, trainer)

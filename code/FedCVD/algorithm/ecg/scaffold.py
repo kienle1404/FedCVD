@@ -1,4 +1,5 @@
 
+from collections import OrderedDict
 from copy import deepcopy
 from algorithm.ecg.fedavg import FedAvgServerHandler, FedAvgSerialClientTrainer
 from utils.evaluation import calculate_accuracy, calculate_multilabel_metrics, get_pred_label, transfer_tensor_to_numpy
@@ -11,6 +12,32 @@ import torch
 import tqdm
 import pandas as pd
 import numpy as np
+
+
+def _zeros_like_ordered_dict(ordered_dict: OrderedDict) -> OrderedDict:
+    """Create an OrderedDict with zero tensors matching the structure of input."""
+    return OrderedDict({k: torch.zeros_like(v) for k, v in ordered_dict.items()})
+
+
+def _add_ordered_dicts(a: OrderedDict, b: OrderedDict) -> OrderedDict:
+    """Element-wise addition of two OrderedDicts."""
+    return OrderedDict({k: a[k] + b[k] for k in a.keys()})
+
+
+def _sub_ordered_dicts(a: OrderedDict, b: OrderedDict) -> OrderedDict:
+    """Element-wise subtraction of two OrderedDicts."""
+    return OrderedDict({k: a[k] - b[k] for k in a.keys()})
+
+
+def _scale_ordered_dict(d: OrderedDict, scale: float) -> OrderedDict:
+    """Scale all tensors in an OrderedDict by a scalar."""
+    return OrderedDict({k: scale * v for k, v in d.items()})
+
+
+def _flatten_ordered_dict(d: OrderedDict) -> torch.Tensor:
+    """Flatten an OrderedDict of tensors to a single 1D tensor."""
+    return torch.cat([v.flatten() for v in d.values()])
+
 
 class ScaffoldServerHandler(FedAvgServerHandler):
     def __init__(
@@ -40,24 +67,33 @@ class ScaffoldServerHandler(FedAvgServerHandler):
             logger=logger
         )
         self.lr = lr
-        self.global_c = torch.zeros_like(self.model_parameters)
+        # Initialize global_c as OrderedDict of zeros
+        self.global_c = _zeros_like_ordered_dict(self.model_parameters)
 
     @property
     def downlink_package(self):
         return [self.model_parameters, self.global_c]
 
     def global_update(self, buffer):
-        # unpack
+        # unpack - dys and dcs are lists of OrderedDicts
         dys = [ele[0] for ele in buffer]
         dcs = [ele[1] for ele in buffer]
 
+        # Aggregate using fedavg (returns OrderedDict)
         dx = Aggregators.fedavg_aggregate(dys)
         dc = Aggregators.fedavg_aggregate(dcs)
 
-        next_model = self.model_parameters + self.lr * dx
-        self.set_model(next_model)
+        # Apply server learning rate: scaled_dx = lr * dx
+        scaled_dx = _scale_ordered_dict(dx, self.lr)
 
-        self.global_c += 1.0 * len(dcs) / self.num_clients * dc
+        # Update model: model = model + lr * dx
+        # Filter out num_batches_tracked (Long type) which can't have Float added to it
+        SerializationTool.deserialize_model(self._model, scaled_dx, mode="add", filter_keys="num_batches_tracked")
+
+        # Update global_c: global_c += (num_clients_in_round / total_clients) * dc
+        scale = 1.0 * len(dcs) / self.num_clients
+        scaled_dc = _scale_ordered_dict(dc, scale)
+        self.global_c = _add_ordered_dicts(self.global_c, scaled_dc)
 
 
 class ScaffoldSerialClientTrainer(FedAvgSerialClientTrainer):
@@ -96,20 +132,29 @@ class ScaffoldSerialClientTrainer(FedAvgSerialClientTrainer):
 
     def local_process(self, payload, id_list):
         pack = None
-        model_parameters = payload[0]
-        global_c = payload[1]
+        model_parameters = payload[0]  # OrderedDict
+        global_c = payload[1]  # OrderedDict
         for idx in id_list:
             self.set_model(model_parameters)
-            frz_model = model_parameters
+            frz_model = deepcopy(model_parameters)  # Deep copy to preserve original
             if self.cs[idx] is None:
-                self.cs[idx] = torch.zeros_like(model_parameters)
+                self.cs[idx] = _zeros_like_ordered_dict(model_parameters)
             for epoch in range(self.max_epoch):
                 pack = self.train(epoch, global_c, idx)
                 # self.local_test(idx, epoch)
                 # self.global_test(idx, epoch)
-            dy = self.model_parameters - frz_model
-            dc = -1.0 / (self.max_epoch * len(self.train_loaders[idx]) * self.lr) * dy - global_c
-            self.cs[idx] += dc
+
+            # Compute dy = model_parameters_after - frz_model (OrderedDict)
+            dy = _sub_ordered_dicts(self.model_parameters, frz_model)
+
+            # Compute dc = -1/(K*eta) * dy - global_c
+            scale = -1.0 / (self.max_epoch * len(self.train_loaders[idx]) * self.lr)
+            scaled_dy = _scale_ordered_dict(dy, scale)
+            dc = _sub_ordered_dicts(scaled_dy, global_c)
+
+            # Update client control variate: cs[idx] += dc
+            self.cs[idx] = _add_ordered_dicts(self.cs[idx], dc)
+
             self.cache.append([dy, dc])
             torch.save(
                 {
@@ -120,6 +165,10 @@ class ScaffoldSerialClientTrainer(FedAvgSerialClientTrainer):
 
     def train(self, epoch, global_c, idx):
         self._model.train()
+
+        # Flatten control variates to tensors for gradient correction
+        global_c_flat = _flatten_ordered_dict(global_c)
+        cs_flat = _flatten_ordered_dict(self.cs[idx])
 
         metric = Accumulator(3)
         pred_score_list = []
@@ -145,10 +194,18 @@ class ScaffoldSerialClientTrainer(FedAvgSerialClientTrainer):
             self.optimizer.zero_grad()
             loss.backward()
 
+            # Get model gradients as flattened tensor
             grad = self.model_grads
-            grad = grad - self.cs[idx] + global_c
-            index = 0
 
+            # Move control variates to same device as gradients
+            cs_flat_device = cs_flat.to(grad.device)
+            global_c_flat_device = global_c_flat.to(grad.device)
+
+            # SCAFFOLD gradient correction: grad = grad - c_i + c
+            grad = grad - cs_flat_device + global_c_flat_device
+
+            # Apply corrected gradients back to model parameters
+            index = 0
             parameters = self._model.parameters()
             for p in self._model.state_dict().values():
                 if p.grad is None:

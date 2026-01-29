@@ -6,13 +6,12 @@ if [ "${DIRNAME:0:1}" = "/" ];then
 else
     current_dir="$(pwd)"/"$(dirname "$DIRNAME")"
 fi
-#input_path="$current_dir"/../../../../data
-input_path="/data/zyk/data/dataset/"
-output_path="$current_dir"/../../../output
+input_path="$current_dir"/../../../../data
+output_path="$current_dir"/../../../../output
 seed=42
 batch_size=32
 lrs=(0.1)
-rand_percents=(5 80 50)
+rand_percents=(80)
 layer_idx=1
 eta=1.0
 threshold=0.1

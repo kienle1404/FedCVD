@@ -24,8 +24,8 @@ parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--max_epoch", type=int, default=50)
 parser.add_argument("--lr", type=float, default=0.1)
-parser.add_argument("--lambda_", type=float, default=0.01)
-parser.add_argument("--gamma", type=float, default=0.01)
+parser.add_argument("--lambda_", type=float, default=0.1)  # Paper Table 8: 0.1
+parser.add_argument("--gamma", type=float, default=0)  # Paper Table 8: 0
 parser.add_argument("--model", type=str, default="resnet1d34")
 parser.add_argument("--model_selector", type=str, default="vgg1d11")
 parser.add_argument("--mode", type=str, default="fedsm")

@@ -104,6 +104,7 @@ ALGORITHMS = {
         "params": {
             "max_epoch": 1,
             "communication_round": 5,
+            "beta": 0.01,  # Paper Table 8
         },
         "description": "FedInit",
     },
@@ -112,6 +113,7 @@ ALGORITHMS = {
         "params": {
             "max_epoch": 1,
             "communication_round": 5,
+            "rand_percent": 80,  # Paper Table 8
         },
         "description": "FedALA",
     },
@@ -128,6 +130,8 @@ ALGORITHMS = {
         "params": {
             "max_epoch": 1,
             "communication_round": 5,
+            "lambda_": 0.1,  # Paper Table 8
+            "gamma": 0,      # Paper Table 8
         },
         "description": "FedSM",
     },

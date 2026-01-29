@@ -24,7 +24,7 @@ parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--max_epoch", type=int, default=50)
 parser.add_argument("--lr", type=float, default=0.1)
-parser.add_argument("--rand_percent", type=float, default=5)
+parser.add_argument("--rand_percent", type=float, default=80)  # Paper Table 8: 80
 parser.add_argument("--layer_idx", type=int, default=0)
 parser.add_argument("--eta", type=float, default=1.0)
 parser.add_argument("--threshold", type=float, default=0.1)

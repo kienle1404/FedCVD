@@ -1,4 +1,5 @@
 
+from collections import OrderedDict
 from copy import deepcopy
 from torch.utils.data import DataLoader, Subset
 from algorithm.ecg.fedavg import FedAvgServerHandler, FedAvgSerialClientTrainer
@@ -14,6 +15,13 @@ import pandas as pd
 import numpy as np
 import random
 import wandb
+
+
+def _ordered_dicts_equal(a: OrderedDict, b: OrderedDict) -> bool:
+    """Check if two OrderedDicts have equal tensors."""
+    if a.keys() != b.keys():
+        return False
+    return all(torch.equal(a[k], b[k]) for k in a.keys())
 
 
 class FedALAServerHandler(FedAvgServerHandler):
@@ -181,8 +189,9 @@ class FedALASerialClientTrainer(FedAvgSerialClientTrainer):
 
         # deactivate ALA at the 1st communication iteration
         if torch.sum(params_g[0] - params[0]) == 0:
-            assert torch.equal(SerializationTool.serialize_model(local_model), local_parameters)
-            return SerializationTool.serialize_model(local_model)
+            serialized_local = SerializationTool.serialize_model(local_model)
+            assert _ordered_dicts_equal(serialized_local, local_parameters)
+            return serialized_local
 
         # preserve all the updates in the lower layers
         for param, param_g in zip(params[:-self.layer_idx], params_g[:-self.layer_idx]):
