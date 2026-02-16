@@ -5,9 +5,14 @@ This module implements a personalized FL algorithm that splits transformer atten
 into global (shared/aggregated) and local (personalized) components.
 
 Key Features:
-- Global attention heads (4 heads): Aggregated via FedAvg across all clients
-- Local attention heads (4 heads): Personalized per client, not aggregated
+- Global attention heads: Aggregated via FedAvg across all clients
+- Local attention heads: Personalized per client, not aggregated
+- Configurable head ratio (e.g., 4-4, 5-3, 6-2, 7-1 global-local split)
 - All other components (ResNet, FFN, LayerNorm, FC): Shared/aggregated
+
+Parameter Filtering:
+- Local parameters are identified by 'local_att' or 'local_proj' in parameter name
+- This includes local attention layers and their projection layers
 
 Communication Protocol:
     Server → Client i: [global_params, local_params_0, ..., local_params_{N-1}]
@@ -113,12 +118,12 @@ class FedDualAttServerHandler(FedAvgServerHandler):
 
         Returns:
             dict: Dictionary of local attention parameters
-                Keys: Parameter names containing 'local_att'
+                Keys: Parameter names containing 'local_att' or 'local_proj'
                 Values: Cloned parameter data
         """
         local_state = {}
         for name, param in model.named_parameters():
-            if 'local_att' in name:
+            if 'local_att' in name or 'local_proj' in name:
                 local_state[name] = param.data.clone()
         return local_state
 
@@ -158,10 +163,10 @@ class FedDualAttServerHandler(FedAvgServerHandler):
         temp_model = deepcopy(self._model)
         SerializationTool.deserialize_model(temp_model, serialized_local)
 
-        # Extract only local attention parameters
+        # Extract only local attention parameters (including projection layers)
         local_state = {}
         for name, param in temp_model.named_parameters():
-            if 'local_att' in name:
+            if 'local_att' in name or 'local_proj' in name:
                 local_state[name] = param.data.clone()
 
         return local_state
@@ -239,10 +244,10 @@ class FedDualAttSerialClientTrainer(FedAvgSerialClientTrainer):
         temp_model = deepcopy(self._model)
         SerializationTool.deserialize_model(temp_model, serialized_local)
 
-        # Extract local attention parameters
+        # Extract local attention parameters (including projection layers)
         local_state = {}
         for name, param in temp_model.named_parameters():
-            if 'local_att' in name:
+            if 'local_att' in name or 'local_proj' in name:
                 local_state[name] = param.data
 
         # Load local parameters into current model (strict=False for partial loading)
@@ -258,10 +263,10 @@ class FedDualAttSerialClientTrainer(FedAvgSerialClientTrainer):
         # Create temporary model
         temp_model = deepcopy(self._model)
 
-        # Extract local attention parameters from current model
+        # Extract local attention parameters from current model (including projection layers)
         local_state = {}
         for name, param in self._model.named_parameters():
-            if 'local_att' in name:
+            if 'local_att' in name or 'local_proj' in name:
                 local_state[name] = param.data.clone()
 
         # Load local parameters into temp model and serialize

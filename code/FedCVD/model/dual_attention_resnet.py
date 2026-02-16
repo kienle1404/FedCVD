@@ -160,37 +160,67 @@ class DualAttentionTransformerBlock(Module):
     Transformer block with dual attention mechanism for personalized FL.
 
     This block splits multi-head attention into:
-    - Global attention (4 heads): Shared/aggregated parameters
-    - Local attention (4 heads): Personalized/non-aggregated parameters
+    - Global attention: Shared/aggregated parameters
+    - Local attention: Personalized/non-aggregated parameters
 
+    Each attention branch uses projection layers to support any head count (0-8).
     The outputs from both attention mechanisms are concatenated and combined.
     All other components (FFN, LayerNorm, combine layer) are shared/global.
 
-    CRITICAL: Layer naming with 'global_att' and 'local_att' prefixes is essential
+    Supports edge cases for ablation studies:
+    - global_heads=8, local_heads=0: Global-only (like adding attention to FedAvg)
+    - global_heads=0, local_heads=8: Local-only (pure personalization)
+
+    CRITICAL: Layer naming with 'global_' and 'local_' prefixes is essential
     for parameter filtering in the federated learning algorithm.
     """
     def __init__(self, d_model=512, num_heads=8, global_heads=4, local_heads=4,
-                 ff_dim=2048, dropout=0.1):
+                 ff_dim=2048, dropout=0.1, head_dim=64):
         super(DualAttentionTransformerBlock, self).__init__()
 
-        # Global attention (aggregated via FedAvg in FL)
-        self.global_att = nn.MultiheadAttention(
-            embed_dim=d_model,
-            num_heads=global_heads,
-            dropout=dropout,
-            batch_first=True
-        )
+        # Fixed dimension per attention head (allows any head count)
+        self.head_dim = head_dim
+        self.d_model = d_model
+        self.global_heads = global_heads
+        self.local_heads = local_heads
 
-        # Local attention (personalized per client in FL)
-        self.local_att = nn.MultiheadAttention(
-            embed_dim=d_model,
-            num_heads=local_heads,
-            dropout=dropout,
-            batch_first=True
-        )
+        # Conditionally create global attention branch (aggregated via FedAvg in FL)
+        if global_heads > 0:
+            global_att_dim = global_heads * head_dim  # e.g., 7 * 64 = 448
+            self.global_proj_in = nn.Linear(d_model, global_att_dim)
+            self.global_att = nn.MultiheadAttention(
+                embed_dim=global_att_dim,
+                num_heads=global_heads,
+                dropout=dropout,
+                batch_first=True
+            )
+            self.global_proj_out = nn.Linear(global_att_dim, d_model)
+        else:
+            self.global_proj_in = None
+            self.global_att = None
+            self.global_proj_out = None
 
-        # Combine layer to project concatenated outputs back to d_model
-        self.combine = nn.Linear(d_model * 2, d_model)
+        # Conditionally create local attention branch (personalized per client in FL)
+        if local_heads > 0:
+            local_att_dim = local_heads * head_dim  # e.g., 1 * 64 = 64
+            self.local_proj_in = nn.Linear(d_model, local_att_dim)
+            self.local_att = nn.MultiheadAttention(
+                embed_dim=local_att_dim,
+                num_heads=local_heads,
+                dropout=dropout,
+                batch_first=True
+            )
+            self.local_proj_out = nn.Linear(local_att_dim, d_model)
+        else:
+            self.local_proj_in = None
+            self.local_att = None
+            self.local_proj_out = None
+
+        # Combine layer only needed when both branches exist
+        if global_heads > 0 and local_heads > 0:
+            self.combine = nn.Linear(d_model * 2, d_model)
+        else:
+            self.combine = None
 
         # Feed-forward network (shared/global)
         self.ffn = nn.Sequential(
@@ -216,17 +246,35 @@ class DualAttentionTransformerBlock(Module):
         Returns:
             output: Output tensor (batch, seq_len, d_model)
         """
-        # Global attention branch
-        global_out, _ = self.global_att(x, x, x)
-        x_global = self.norm1(x + global_out)
+        # Global attention branch with projection (if enabled)
+        if self.global_heads > 0:
+            global_in = self.global_proj_in(x)
+            global_att_out, _ = self.global_att(global_in, global_in, global_in)
+            global_out = self.global_proj_out(global_att_out)
+            x_global = self.norm1(x + global_out)
+        else:
+            x_global = None
 
-        # Local attention branch
-        local_out, _ = self.local_att(x, x, x)
-        x_local = self.norm2(x + local_out)
+        # Local attention branch with projection (if enabled)
+        if self.local_heads > 0:
+            local_in = self.local_proj_in(x)
+            local_att_out, _ = self.local_att(local_in, local_in, local_in)
+            local_out = self.local_proj_out(local_att_out)
+            x_local = self.norm2(x + local_out)
+        else:
+            x_local = None
 
-        # Concatenate both branches and combine
-        combined = torch.cat([x_global, x_local], dim=-1)  # (batch, seq_len, 2*d_model)
-        x_combined = self.combine(combined)  # (batch, seq_len, d_model)
+        # Combine branches based on configuration
+        if x_global is not None and x_local is not None:
+            # Both branches: concatenate and combine
+            combined = torch.cat([x_global, x_local], dim=-1)  # (batch, seq_len, 2*d_model)
+            x_combined = self.combine(combined)  # (batch, seq_len, d_model)
+        elif x_global is not None:
+            # Global-only: use global output directly
+            x_combined = x_global
+        else:
+            # Local-only: use local output directly
+            x_combined = x_local
 
         # Feed-forward with residual connection
         ffn_out = self.ffn(x_combined)

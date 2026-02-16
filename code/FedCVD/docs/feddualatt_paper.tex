@@ -1,0 +1,232 @@
+\documentclass[conference]{IEEEtran}
+
+% Packages
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\begin{document}
+
+\title{FedDualAtt: Dual Attention Heads for Personalized Federated Learning in Multi-Center ECG Classification}
+
+\author{
+\IEEEauthorblockN{Author Name\IEEEauthorrefmark{1}}
+\IEEEauthorblockA{Department, University\\
+City, Country\\
+email@university.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+% TODO: Write abstract after completing the paper
+Federated learning (FL) enables collaborative model training across medical institutions without sharing sensitive patient data. However, data heterogeneity across hospitals poses significant challenges for ECG classification. We propose FedDualAtt, a personalized federated learning approach that splits transformer attention heads into global (shared) and local (personalized) branches. Global heads are aggregated via FedAvg to capture shared arrhythmia patterns, while local heads remain client-specific to adapt to institution-specific characteristics. Experiments on a multi-center ECG benchmark with four institutions demonstrate that FedDualAtt outperforms existing FL and personalized FL methods. Analysis of global-local head ratios reveals that different clients benefit from different personalization levels, with the 5-3 split achieving the best balance between performance and stability.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Federated learning, personalization, attention mechanism, ECG classification, transformer
+\end{IEEEkeywords}
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+% TODO: Write introduction
+% P1: FL for Healthcare - privacy, ECG importance
+% P2: Challenge - data heterogeneity, non-IID
+% P3: Our approach - dual attention, architectural personalization
+% P4: Contributions
+
+%==============================================================================
+\section{Related Work}
+%==============================================================================
+
+% TODO: Write related work
+% A. Federated Learning for Medical Data
+% B. Personalized Federated Learning
+
+%==============================================================================
+\section{Proposed Method}
+%==============================================================================
+
+\subsection{Problem Formulation}
+
+We consider a federated learning scenario with $K$ medical institutions (clients), where each client $k \in \{1, \ldots, K\}$ holds a local dataset $\mathcal{D}_k = \{(x_i^k, y_i^k)\}_{i=1}^{n_k}$ of ECG recordings and corresponding diagnostic labels. Due to privacy regulations, raw data cannot be shared across institutions. The goal is to collaboratively train models that achieve strong performance on each client's local test distribution while leveraging knowledge from other clients.
+
+A key challenge in this setting is \textbf{data heterogeneity}: different hospitals exhibit distinct patient demographics, recording equipment, and labeling practices, leading to non-IID data distributions across clients. Standard FL approaches like FedAvg aggregate all model parameters, which can harm performance when client distributions differ significantly. Conversely, purely local training fails to benefit from cross-institutional knowledge.
+
+We propose a middle ground: \textbf{architectural personalization} through dual attention heads, where some model components are shared globally while others remain personalized to each client.
+
+\subsection{Dual Attention Transformer Block}
+
+Our key contribution is the \textbf{Dual Attention Transformer Block}, which splits the multi-head attention mechanism into two parallel branches with distinct roles in federated learning.
+
+\subsubsection{Global Attention Branch ($H_g$ heads)}
+The global branch captures \textbf{shared ECG patterns} common across all institutions, such as fundamental arrhythmia morphologies and rhythm characteristics. Its parameters are aggregated via FedAvg, allowing the model to benefit from collective knowledge. This branch learns representations that generalize well across different data distributions.
+
+\subsubsection{Local Attention Branch ($H_l$ heads)}
+The local branch captures \textbf{institution-specific patterns} that vary across clients, such as recording equipment artifacts, local patient demographics, and site-specific labeling practices. Its parameters remain personalized to each client without aggregation, enabling adaptation to each hospital's unique data characteristics.
+
+\subsubsection{Architecture Details}
+
+Given an input sequence $\mathbf{X} \in \mathbb{R}^{L \times d}$ where $L$ is the sequence length and $d = 512$ is the model dimension, each branch processes the input through three stages:
+
+\textbf{1. Input Projection}: Each attention head operates with a fixed dimension $d_h = 64$:
+\begin{equation}
+\mathbf{X}_g = \mathbf{X} \mathbf{W}_{in}^g \in \mathbb{R}^{L \times (H_g \cdot d_h)}
+\end{equation}
+\begin{equation}
+\mathbf{X}_l = \mathbf{X} \mathbf{W}_{in}^l \in \mathbb{R}^{L \times (H_l \cdot d_h)}
+\end{equation}
+
+\textbf{2. Multi-Head Attention}: Standard scaled dot-product attention is applied within each branch:
+\begin{equation}
+\mathbf{A}_g = \text{softmax}\left(\frac{\mathbf{Q}_g \mathbf{K}_g^T}{\sqrt{d_h}}\right) \mathbf{V}_g
+\end{equation}
+\begin{equation}
+\mathbf{A}_l = \text{softmax}\left(\frac{\mathbf{Q}_l \mathbf{K}_l^T}{\sqrt{d_h}}\right) \mathbf{V}_l
+\end{equation}
+
+\textbf{3. Output Projection}: Attention outputs are projected back to the model dimension:
+\begin{equation}
+\mathbf{G} = \mathbf{A}_g \mathbf{W}_{out}^g \in \mathbb{R}^{L \times d}
+\end{equation}
+\begin{equation}
+\mathbf{L} = \mathbf{A}_l \mathbf{W}_{out}^l \in \mathbb{R}^{L \times d}
+\end{equation}
+
+\subsubsection{Branch Combination}
+
+The outputs from both branches are combined through concatenation and linear projection:
+\begin{equation}
+\mathbf{O} = [\mathbf{G}; \mathbf{L}] \mathbf{W}_c
+\end{equation}
+where $[\cdot; \cdot]$ denotes concatenation along the feature dimension, and $\mathbf{W}_c \in \mathbb{R}^{2d \times d}$ projects back to dimension $d$.
+
+\textbf{Residual connections and layer normalization} follow the Pre-LN style:
+\begin{equation}
+\mathbf{X}' = \text{LayerNorm}(\mathbf{X} + \mathbf{O})
+\end{equation}
+\begin{equation}
+\mathbf{Y} = \text{LayerNorm}(\mathbf{X}' + \text{FFN}(\mathbf{X}'))
+\end{equation}
+where FFN is a two-layer feed-forward network with ReLU activation and hidden dimension 2048.
+
+\subsubsection{Head Ratio Configuration}
+
+The total number of heads is fixed at $H = H_g + H_l = 8$. The ratio between global and local heads controls the balance between shared learning and personalization:
+\begin{itemize}
+    \item \textbf{More global heads} (e.g., 6-2): Emphasizes cross-client knowledge sharing
+    \item \textbf{More local heads} (e.g., 2-6): Emphasizes client-specific adaptation
+    \item \textbf{Balanced} (4-4): Equal capacity for shared and personalized features
+\end{itemize}
+
+This architectural design enables explicit control over the personalization-generalization trade-off at the attention mechanism level.
+
+\subsection{Federated Training Protocol}
+
+Our training protocol extends FedAvg to handle dual parameter sets.
+
+\textbf{Server maintains:}
+\begin{itemize}
+    \item Global parameters $\theta^g$: ResNet backbone, global attention branch (projection layers + attention), FFN, classification head
+    \item Per-client local parameters $\{\theta^l_k\}_{k=1}^K$: Local attention branch (projection layers + attention)
+\end{itemize}
+
+\textbf{Communication Round $t$:}
+
+\begin{enumerate}
+    \item \textbf{Server $\rightarrow$ Client $k$}: Send $(\theta^g_t, \theta^l_{k,t})$
+
+    \item \textbf{Local Training}: Client $k$ performs $E$ epochs of SGD on $\mathcal{D}_k$:
+    \begin{equation}
+    \theta^g_{k,t+1}, \theta^l_{k,t+1} = \text{SGD}(\theta^g_t, \theta^l_{k,t}; \mathcal{D}_k)
+    \end{equation}
+
+    \item \textbf{Client $k$ $\rightarrow$ Server}: Upload $(\theta^g_{k,t+1}, \theta^l_{k,t+1}, n_k)$
+
+    \item \textbf{Server Aggregation}:
+    \begin{itemize}
+        \item Global parameters: $\theta^g_{t+1} = \sum_{k=1}^K \frac{n_k}{n} \theta^g_{k,t+1}$ (FedAvg)
+        \item Local parameters: $\theta^l_{k,t+1}$ stored directly (no aggregation)
+    \end{itemize}
+\end{enumerate}
+
+This protocol ensures that global attention heads converge to shared representations while local heads specialize to each client's data distribution.
+
+\subsection{Model Architecture}
+
+We integrate the dual attention mechanism into a hybrid CNN-Transformer architecture for ECG classification:
+
+\begin{enumerate}
+    \item \textbf{Feature Extraction}: ResNet1D-34 backbone processes raw 12-lead ECG signals ($\mathbb{R}^{12 \times 5000}$) to extract feature maps ($\mathbb{R}^{512 \times L'}$).
+
+    \item \textbf{Positional Encoding}: Learnable positional embeddings are added to preserve temporal information.
+
+    \item \textbf{Dual Attention Blocks}: Two stacked dual attention transformer blocks with $H_g + H_l = 8$ total heads process the features.
+
+    \item \textbf{Classification Head}: Global average pooling followed by a fully-connected layer produces multi-label predictions.
+\end{enumerate}
+
+All components except local attention branches (local projection layers and local multi-head attention) are designated as global parameters and aggregated across clients.
+
+%==============================================================================
+\section{Experiments}
+%==============================================================================
+
+% TODO: Write experiments section
+% A. Experimental Setup
+% B. Main Results (Table 1)
+% C. Head Ratio Analysis (Table 2)
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+
+% TODO: Write conclusion
+
+%==============================================================================
+% References
+%==============================================================================
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{10}
+
+\bibitem{fedavg}
+B.~McMahan, E.~Moore, D.~Ramage, S.~Hampson, and B.~A.~y~Arcas,
+``Communication-efficient learning of deep networks from decentralized data,''
+in \emph{Proc. AISTATS}, 2017.
+
+\bibitem{fedprox}
+T.~Li, A.~K.~Sahu, M.~Zaheer, M.~Sanjabi, A.~Talwalkar, and V.~Smith,
+``Federated optimization in heterogeneous networks,''
+in \emph{Proc. MLSys}, 2020.
+
+\bibitem{ditto}
+T.~Li, S.~Hu, A.~Beirami, and V.~Smith,
+``Ditto: Fair and robust federated learning through personalization,''
+in \emph{Proc. ICML}, 2021.
+
+\bibitem{scaffold}
+S.~P.~Karimireddy, S.~Kale, M.~Mohri, S.~J.~Reddi, S.~U.~Stich, and A.~T.~Suresh,
+``SCAFFOLD: Stochastic controlled averaging for federated learning,''
+in \emph{Proc. ICML}, 2020.
+
+\bibitem{transformer}
+A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N.~Gomez, L.~Kaiser, and I.~Polosukhin,
+``Attention is all you need,''
+in \emph{Proc. NeurIPS}, 2017.
+
+\bibitem{resnet}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun,
+``Deep residual learning for image recognition,''
+in \emph{Proc. CVPR}, 2016.
+
+\end{thebibliography}
+
+\end{document}

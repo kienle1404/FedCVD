@@ -30,10 +30,10 @@ CLIENT_NAMES = ["SPH", "PTB-XL", "SXPH", "G12EC"]
 # Display names for algorithms (maps internal names to paper format)
 DISPLAY_NAMES = {
     "centralized": "Centralized",
-    "local_client1": "Client1 (SPH)",
-    "local_client2": "Client2 (PTB-XL)",
-    "local_client3": "Client3 (SXPH)",
-    "local_client4": "Client4 (G12EC)",
+    "local_client1": "Client1",
+    "local_client2": "Client2",
+    "local_client3": "Client3",
+    "local_client4": "Client4",
     "fedavg": "FedAvg",
     "fedprox": "FedProx",
     "scaffold": "Scaffold",
@@ -448,16 +448,26 @@ def print_table_2_format(results: dict):
 
 
 def print_cross_evaluation(results: dict):
-    """Print cross-evaluation matrices for each algorithm."""
+    """Print cross-evaluation matrices for local training only.
+
+    Cross-evaluation only makes sense for local (client-only) training where
+    each client trains its own model independently. For FL methods, there's
+    only one global model, so cross-evaluation is not meaningful.
+    """
 
     # Print matrices for each metric type
     for metric_name, metric_label in [('accuracy', 'Accuracy'), ('micro_f1', 'Micro-F1'), ('mAP', 'mAP')]:
         print("\n" + "=" * 100)
-        print(f"Cross-Evaluation {metric_label} Matrices (%)")
+        print(f"Cross-Evaluation {metric_label} Matrices - Local Training Only (%)")
         print("(Row = Training Client, Column = Test Client)")
         print("=" * 100)
 
         for algo, data in results.items():
+            # Only show cross-eval for local training (client-only baselines)
+            # FL methods have one global model, so cross-eval doesn't apply
+            if not algo.startswith("local_client"):
+                continue
+
             if data is None or data.get('cross_eval') is None:
                 continue
 
@@ -479,7 +489,8 @@ def print_cross_evaluation(results: dict):
             if not has_data:
                 continue
 
-            print(f"\n{algo.upper()}:")
+            display_name = DISPLAY_NAMES.get(algo, algo)
+            print(f"\n{display_name}:")
             print("-" * 60)
 
             # Header

@@ -45,10 +45,23 @@ parser.add_argument("--optimizer_name", type=str, default="SGD", help="Optimizer
 parser.add_argument("--clients", type=list[str], default=["client1", "client2", "client3", "client4"],
                     help="List of client names")
 parser.add_argument("--data_fraction", type=float, default=1.0, help="Fraction of data to use (0.0-1.0)")
+parser.add_argument("--num_heads", type=int, default=8,
+                    help="Total number of attention heads (default: 8)")
+parser.add_argument("--global_heads", type=int, default=5,
+                    help="Number of global attention heads. Local heads = num_heads - global_heads.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
     setup_seed(args.seed)
+
+    # Validate and compute head configuration
+    num_heads = args.num_heads
+    global_heads = args.global_heads
+    local_heads = num_heads - global_heads
+    if global_heads < 0 or global_heads > num_heads:
+        raise ValueError(f"global_heads must be between 0 and {num_heads}, got {global_heads}")
+    if num_heads < 1:
+        raise ValueError(f"num_heads must be at least 1, got {num_heads}")
 
     # Device configuration
     if torch.cuda.is_available():
@@ -71,7 +84,7 @@ if __name__ == "__main__":
     output_path = args.output_path
     input_path = input_path if input_path[-1] == "/" else input_path + "/"
     output_path = output_path if output_path[-1] == "/" else output_path + "/"
-    output_path = output_path + args.model + "/" + args.mode + "/" + datetime.now().strftime("%Y%m%d%H%M%S") + "/"
+    output_path = output_path + args.model + "/" + args.mode + f"/global{global_heads}_local{local_heads}/seed{args.seed}/" + datetime.now().strftime("%Y%m%d%H%M%S") + "/"
     clients = args.clients
 
     # Create datasets for each client
@@ -104,9 +117,9 @@ if __name__ == "__main__":
         for test_dataset in test_datasets
     ]
 
-    # Initialize model
-    print(f"Initializing model: {args.model}")
-    model = get_model(args.model)
+    # Initialize model with configurable head ratio
+    print(f"Initializing model: {args.model} with {num_heads} total heads ({global_heads} global, {local_heads} local)")
+    model = get_model(args.model, global_heads=global_heads, num_heads=num_heads)
 
     # Loss function for multi-label classification
     criterion = nn.BCELoss()
@@ -133,7 +146,10 @@ if __name__ == "__main__":
         "max_epoch": max_epoch,
         "seed": args.seed,
         "algorithm": "FedDualAtt",
-        "description": "Dual Attention Heads - 4 global (aggregated) + 4 local (personalized)"
+        "num_heads": num_heads,
+        "global_heads": global_heads,
+        "local_heads": local_heads,
+        "description": f"Dual Attention Heads - {num_heads} total ({global_heads} global + {local_heads} local)"
     }
     with open(output_path + "setting.json", "w") as f:
         f.write(json.dumps(setting, indent=2))
@@ -188,8 +204,8 @@ if __name__ == "__main__":
     print(f"Starting Federated Learning with Dual Attention ({communication_round} rounds)...")
     print(f"Model: {args.model}")
     print(f"Clients: {num_clients} ({clients})")
-    print(f"Global attention heads: 4 (aggregated via FedAvg)")
-    print(f"Local attention heads: 4 (personalized per client)")
+    print(f"Global attention heads: {global_heads} (aggregated via FedAvg)")
+    print(f"Local attention heads: {local_heads} (personalized per client)")
     print("-" * 80)
 
     standalone = Pipeline(handler, trainer)

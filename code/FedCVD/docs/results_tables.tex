@@ -1,0 +1,142 @@
+\documentclass[11pt]{article}
+
+% Packages
+\usepackage[margin=0.5in, landscape]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{colortbl}
+\usepackage{xcolor}
+
+% Define light gray for highlighting
+\definecolor{lightgray}{gray}{0.9}
+
+\begin{document}
+
+\title{FedDualAtt: Experimental Results}
+\author{}
+\date{}
+\maketitle
+
+%==============================================================================
+\section{Main Results}
+%==============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{Performance of different FL methods on Fed-ECG using Micro F1-Score (Mi-F1) and Mean Average Precision (mAP), both expressed as percentages (\%). The best results for each configuration are highlighted in \textbf{bold}.}
+\label{tab:main_results}
+\small
+\begin{tabular}{l|cc|cc|cc|cc|cc}
+\toprule
+ & \multicolumn{8}{c|}{\textbf{LOCAL}} & \multicolumn{2}{c}{\textbf{GLOBAL}} \\
+\cmidrule{2-11}
+\textbf{Methods} & \multicolumn{2}{c|}{Client1 (SPH)} & \multicolumn{2}{c|}{Client2 (PTB-XL)} & \multicolumn{2}{c|}{Client3 (SXPH)} & \multicolumn{2}{c|}{Client4 (G12EC)} & \multicolumn{2}{c}{} \\
+ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ \\
+\midrule
+Client1 & 86.89 & -- & 54.70 & -- & 62.06 & -- & 52.00 & -- & 65.47 & -- \\
+Client2 & 64.61 & -- & 74.77 & -- & 24.31 & -- & 42.63 & -- & 47.91 & -- \\
+Client3 & 22.17 & -- & 17.44 & -- & 87.90 & -- & 56.55 & -- & 51.26 & -- \\
+Client4 & 21.32 & -- & 16.77 & -- & 64.27 & -- & 60.56 & -- & 41.18 & -- \\
+\midrule
+FedAvg & 71.78 & -- & 50.33 & -- & 77.87 & -- & 67.10 & -- & 68.79 & -- \\
+FedProx & 69.38 & -- & 49.46 & -- & 74.53 & -- & 67.69 & -- & 66.48 & -- \\
+Scaffold & 70.76 & -- & 51.32 & -- & 74.33 & -- & 66.41 & -- & 67.15 & -- \\
+FedInit & 70.73 & -- & 51.65 & -- & 75.04 & -- & 67.38 & -- & 67.57 & -- \\
+Ditto & 69.86 & -- & 50.09 & -- & 74.62 & -- & 65.40 & -- & 66.75 & -- \\
+FedSM & 50.18 & -- & 45.54 & -- & 75.00 & -- & 74.66 & -- & 62.12 & -- \\
+FedALA & 71.21 & -- & 51.74 & -- & 76.68 & -- & 66.56 & -- & 68.41 & -- \\
+\midrule
+Centralized & 86.67 & -- & 77.36 & -- & 87.11 & -- & 75.98 & -- & 83.48 & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%==============================================================================
+\section{Head Ratio Analysis}
+%==============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{Effect of global-local head ratio on FedDualAtt performance using Micro F1-Score (Mi-F1) and Mean Average Precision (mAP), both expressed as percentages (\%). Results are averaged over 5 seeds with standard deviation shown. The best results are highlighted in \textbf{bold}.}
+\label{tab:head_ratio}
+\small
+\begin{tabular}{l|cc|cc|cc|cc|cc}
+\toprule
+ & \multicolumn{8}{c|}{\textbf{LOCAL}} & \multicolumn{2}{c}{\textbf{GLOBAL}} \\
+\cmidrule{2-11}
+\textbf{Ratio} & \multicolumn{2}{c|}{Client1 (SPH)} & \multicolumn{2}{c|}{Client2 (PTB-XL)} & \multicolumn{2}{c|}{Client3 (SXPH)} & \multicolumn{2}{c|}{Client4 (G12EC)} & \multicolumn{2}{c}{} \\
+\textbf{(G-L)} & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ & Mi-F1$\uparrow$ & mAP$\uparrow$ \\
+\midrule
+0-8 & 39.35$\pm$3.0 & 56.48$\pm$1.9 & 34.31$\pm$2.6 & 56.46$\pm$2.8 & 76.14$\pm$1.0 & 38.92$\pm$1.2 & 69.00$\pm$1.3 & 41.49$\pm$2.3 & 58.50$\pm$1.5 & 53.25$\pm$2.2 \\
+1-7 & 77.33$\pm$2.8 & 56.80$\pm$0.6 & 53.87$\pm$1.4 & 58.27$\pm$1.2 & \textbf{79.01}$\pm$1.1 & \textbf{40.13}$\pm$0.5 & 67.96$\pm$0.7 & 42.50$\pm$0.6 & 71.58$\pm$1.3 & 55.19$\pm$0.7 \\
+2-6 & 69.65$\pm$8.7 & 54.29$\pm$3.7 & 47.25$\pm$5.9 & 54.85$\pm$2.8 & 78.48$\pm$1.1 & 38.13$\pm$2.6 & 66.62$\pm$2.3 & 40.63$\pm$2.7 & 68.00$\pm$3.8 & 52.39$\pm$3.6 \\
+3-5 & 79.61$\pm$1.8 & \textbf{57.36}$\pm$0.9 & 55.27$\pm$2.5 & 57.92$\pm$1.3 & 78.07$\pm$1.0 & 39.93$\pm$0.3 & 68.46$\pm$0.9 & \textbf{42.59}$\pm$1.3 & 72.12$\pm$1.3 & \textbf{55.34}$\pm$0.9 \\
+4-4 & 77.32$\pm$5.5 & 56.38$\pm$1.7 & 53.61$\pm$4.0 & 56.99$\pm$1.8 & 78.24$\pm$1.3 & 39.64$\pm$1.3 & 67.70$\pm$1.6 & 41.77$\pm$1.7 & 71.21$\pm$2.7 & 54.71$\pm$1.9 \\
+\rowcolor{lightgray}
+5-3 & \textbf{81.17}$\pm$1.0 & 56.12$\pm$0.8 & 55.84$\pm$2.3 & \textbf{58.28}$\pm$1.3 & 77.79$\pm$0.5 & 39.89$\pm$0.4 & 68.05$\pm$1.1 & 41.24$\pm$0.9 & 72.47$\pm$0.7 & 54.89$\pm$0.8 \\
+6-2 & 71.61$\pm$10.4 & 53.52$\pm$4.4 & 49.43$\pm$7.6 & 54.21$\pm$3.5 & 77.06$\pm$1.5 & 37.83$\pm$2.3 & 65.34$\pm$1.5 & 39.38$\pm$2.8 & 68.17$\pm$4.8 & 51.92$\pm$4.1 \\
+7-1 & 77.82$\pm$0.8 & 56.61$\pm$0.6 & 54.83$\pm$1.3 & 57.35$\pm$0.6 & 78.63$\pm$0.9 & 39.93$\pm$0.7 & 67.75$\pm$0.7 & 41.93$\pm$0.8 & 71.74$\pm$0.4 & 54.44$\pm$0.6 \\
+\rowcolor{lightgray}
+8-0 & 80.68$\pm$2.2 & 57.27$\pm$1.0 & \textbf{56.67}$\pm$2.1 & 56.46$\pm$2.6 & 78.11$\pm$1.2 & 39.67$\pm$1.0 & \textbf{68.26}$\pm$1.5 & \textbf{42.59}$\pm$1.9 & \textbf{72.68}$\pm$1.1 & 54.81$\pm$1.9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%==============================================================================
+\section{Summary}
+%==============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{Best Head Ratio by Metric (Global Average)}
+\label{tab:summary_global}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Metric} & \textbf{Best Ratio} & \textbf{Score} & \textbf{Std Dev} \\
+\midrule
+Micro-F1 & 8-0 & 72.68\% & $\pm$1.12 \\
+Accuracy & 5-3 & 61.65\% & $\pm$0.51 \\
+mAP & 3-5 & 55.34\% & $\pm$0.93 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\caption{Best Head Ratio per Client (Micro-F1)}
+\label{tab:summary_client}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Client} & \textbf{Best Ratio} & \textbf{Micro-F1} \\
+\midrule
+SPH & 5-3 & 81.17$\pm$1.04\% \\
+PTB-XL & 8-0 & 56.67$\pm$2.09\% \\
+SXPH & 1-7 & 79.01$\pm$1.07\% \\
+G12EC & 0-8 & 69.00$\pm$1.28\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%==============================================================================
+\section{Ablation Study}
+%==============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{Ablation: Global-only vs Local-only vs Dual Split (Global Average)}
+\label{tab:ablation}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Configuration} & \textbf{Description} & \textbf{Micro-F1} & \textbf{Accuracy} & \textbf{mAP} \\
+\midrule
+0-8 (Local-only) & All heads personalized & 58.50$\pm$1.49 & 41.96$\pm$1.73 & 53.25$\pm$2.18 \\
+8-0 (Global-only) & All heads shared & 72.68$\pm$1.12 & 61.23$\pm$1.66 & 54.81$\pm$1.91 \\
+5-3 (Best dual) & 62.5\% global & 72.47$\pm$0.70 & 61.65$\pm$0.51 & 54.89$\pm$0.80 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
