@@ -231,7 +231,59 @@ The cross-evaluation matrices (client_i model tested on client_j data) reveal:
 
 ---
 
-## 8. Project Structure
+## 8. Implementation Fixes
+
+Two rounds of bug fixes were required during development, documented in commits `87cc241` and `dbdfb98`.
+
+### 8.1 Baseline Algorithm Fixes (commit `87cc241`: "fix failed algorithms")
+
+Three baseline algorithms (Scaffold, FedInit, FedALA) failed at runtime due to **OrderedDict serialization changes** in the FedLab framework. The `SerializationTool.serialize_model()` function changed its return type from a flat `torch.Tensor` to an `OrderedDict`, breaking arithmetic operations (`+`, `-`, `*`) that assumed tensor semantics.
+
+| Algorithm | Failure | Root Cause | Fix |
+|-----------|---------|------------|-----|
+| **Scaffold** | `RuntimeError` on `model + lr * dx` | `dx` was an `OrderedDict`, not a tensor; `+`/`*` undefined | Added helper functions `_add_ordered_dicts()`, `_sub_ordered_dicts()`, `_scale_ordered_dict()` for element-wise OrderedDict math. Also used `mode="add"` in `deserialize_model()` with `filter_keys="num_batches_tracked"` to skip non-Float tensors. |
+| **FedInit** | `RuntimeError` on `global + beta * (global - local)` | Same OrderedDict arithmetic issue | Added `_sub_ordered_dicts()`, `_scale_ordered_dict()`, `_add_ordered_dicts()` helpers. Replaced `torch.equal()` assertion with `_ordered_dicts_equal()`. |
+| **FedALA** | `RuntimeError` on `torch.equal(serialized, params)` | `torch.equal()` doesn't work on `OrderedDict` | Added `_ordered_dicts_equal()` that iterates keys and compares tensors individually. |
+
+**Scaffold additional fix**: The `train()` method applied SCAFFOLD's gradient correction (`grad = grad - c_i + c`) using control variates `global_c` and `cs[idx]` that were OrderedDicts. These needed to be **flattened to 1D tensors** (`_flatten_ordered_dict()`) and moved to the correct device before gradient correction could be applied. A `deepcopy` was also added for `frz_model` to prevent mutation.
+
+### 8.2 FedDualAtt Protocol Fix (commit `dbdfb98`: "fix feddualatt; see summary")
+
+The FedDualAtt implementation had four correctness and efficiency bugs in the server-client communication protocol. Training appeared to run because clients always loaded correct params before each step, but the protocol was fundamentally broken:
+
+| # | Bug | Impact | Fix |
+|---|-----|--------|-----|
+| **1** | **Global upload contaminated** -- client serialized full model (including `local_att`/`local_proj`) as "global" upload | FedAvg averaged local attention heads across all clients, destroying personalization every round | Client **zeros all local positions** before calling `model_parameters`. FedAvg on zeros stays zero, preserving the server model invariant. |
+| **2** | **Server eval used wrong model** -- inherited `local_test()` from FedAvg evaluated `self._model` directly (local positions = 0) | All clients evaluated as if they had no local attention heads; metrics did not reflect personalization | **Override `local_test()`**: load client k's local params before each evaluation, then `_zero_local_params()` to restore invariant. |
+| **3** | **~20x serialization overhead** -- local params transmitted by deepcopying entire model, serializing, deserializing | Wasted memory and time for what is only ~8 small tensors | Local params passed as plain **`dict {name: tensor}`** directly. `load_state_dict(..., strict=False)` applies them without serialization round-trip. |
+| **4** | **FedAvg aggregated local heads** -- `global_update()` ran FedAvg on full model vector including local positions | Identical to Bug 1 from server side; local heads averaged together every round | Uplink structured as `[global_params (local=0), local_dict, client_id, n_k]`. `global_update()` unpacks explicitly; FedAvg only on global_params. |
+
+**Server Model Invariant (post-fix)**: `self._model` in `FedDualAttServerHandler` always holds aggregated global params with local positions zeroed. This is established in `__init__` via `_zero_local_params()` and maintained by:
+- The uplink protocol (clients zero local positions before serializing)
+- FedAvg on zero vectors (stays zero)
+- `_zero_local_params()` called after each client evaluation in `local_test()`
+
+Per-client personalized params live exclusively in `self.local_attention_params: list[dict]`.
+
+---
+
+## 9. Development Timeline
+
+| Commit | Date | Description |
+|--------|------|-------------|
+| `786bd85` | -- | Initial DualAttentionResNet1D implementation |
+| `c1da278` | -- | Quick benchmark & data_fraction support for ECG baselines |
+| `1fde83b` | -- | Metrics extraction script |
+| `87cc241` | Jan 28 | **Fix failed algorithms** -- Scaffold, FedInit, FedALA OrderedDict fixes |
+| `0809619` | Jan 29 | Implement configurable head split ratio |
+| `3085e51` | Feb 16 | Initial results: head ratio experiments, plots, paper tables |
+| `96ad3b2` | Feb 16 | Project summary document |
+| `dbdfb98` | Feb 16 | **Fix FedDualAtt** -- 4-bug protocol rewrite (see Section 8.2) |
+| `5e92f80` | Feb 17 | Framework diagram (TikZ) |
+
+---
+
+## 10. Project Structure
 
 ```
 FedCVD/
@@ -260,7 +312,7 @@ FedCVD/
 
 ---
 
-## 9. Conclusions & Future Work
+## 11. Conclusions & Future Work
 
 **FedDualAtt** demonstrates that **architectural personalization through attention head splitting** is an effective strategy for personalized federated learning in multi-center ECG classification. The method:
 - Outperforms all FL baselines (FedAvg, FedProx, Scaffold, Ditto, FedALA, FedInit, FedSM)

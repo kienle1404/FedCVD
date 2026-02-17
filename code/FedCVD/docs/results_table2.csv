@@ -1,0 +1,18 @@
+method,type,local_acc,local_acc_std,global_acc,global_acc_std,local_micro_f1,local_micro_f1_std,global_micro_f1,global_micro_f1_std,local_mAP,local_mAP_std,global_mAP,global_mAP_std
+Centralized,baseline,69.92,,74.94,,81.78,,83.48,,48.72,,66.73,
+FedAvg,baseline,50.82,,55.64,,66.77,,68.79,,47.90,,52.79,
+FedProx,baseline,47.56,,51.75,,65.27,,66.48,,47.01,,51.70,
+Scaffold,baseline,,,,,,,,,,,,
+Ditto,baseline,50.73,,55.33,,64.99,,66.75,,44.56,,48.75,
+FedInit,baseline,,,,,,,,,,,,
+FedSM,baseline,43.77,,46.96,,61.37,,62.06,,48.90,,54.81,
+FedALA,baseline,,,,,,,,,,,,
+FedDualAtt (8G:0L),feddualatt,56.62,2.49,61.23,1.66,70.93,1.79,72.68,1.12,49.00,1.75,54.81,1.91
+FedDualAtt (7G:1L),feddualatt,67.33,1.02,48.77,3.26,80.03,0.65,63.43,3.01,50.70,0.64,45.98,0.44
+FedDualAtt (6G:2L),feddualatt,65.25,3.39,42.30,4.13,78.35,3.01,57.52,2.78,48.35,3.48,43.80,4.06
+FedDualAtt (5G:3L),feddualatt,67.74,1.46,45.67,6.66,80.29,1.05,61.92,4.90,50.98,0.86,48.42,2.20
+FedDualAtt (4G:4L),feddualatt,66.47,2.20,51.80,4.55,79.62,1.57,65.62,3.32,50.38,2.05,50.28,2.41
+FedDualAtt (3G:5L),feddualatt,66.62,2.04,50.28,8.04,80.00,1.29,65.05,6.22,51.13,0.97,50.98,4.19
+FedDualAtt (2G:6L),feddualatt,64.74,3.40,49.24,7.86,78.37,2.77,63.36,5.93,48.54,3.34,49.93,3.47
+FedDualAtt (1G:7L),feddualatt,65.78,1.46,54.36,6.11,79.58,0.67,66.77,5.49,50.84,0.77,51.09,1.91
+FedDualAtt (0G:8L),feddualatt,68.98,2.14,31.29,1.73,80.78,1.86,50.79,1.74,51.12,2.19,44.49,2.43
