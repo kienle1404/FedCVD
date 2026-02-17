@@ -1,0 +1,283 @@
+% =============================================================================
+% FedDualAtt Framework Diagram
+% Compile with: pdflatex feddualatt_framework.tex
+%   (or lualatex / xelatex)
+% Requires: tikz, amsmath, amssymb
+% =============================================================================
+\documentclass[tikz,border=12pt]{standalone}
+\usepackage{amsmath,amssymb}
+\usetikzlibrary{positioning,fit,backgrounds,arrows.meta,calc}
+
+% ---------------------------------------------------------------------------
+% Color palette
+% ---------------------------------------------------------------------------
+\definecolor{cGrn}{RGB}{34,120,56}     % backbone (global, shared)
+\definecolor{cBlu}{RGB}{30,100,200}    % global attention (FedAvg)
+\definecolor{cOra}{RGB}{200,80,20}     % local attention (per-client)
+\definecolor{cGry}{RGB}{70,70,80}      % I/O boxes, server
+
+% ---------------------------------------------------------------------------
+% TikZ styles
+% ---------------------------------------------------------------------------
+\tikzset{
+  %── Architecture nodes ────────────────────────────────────────────────────
+  io/.style={
+    draw=cGry, fill=gray!12, rounded corners=3pt,
+    text centered, font=\footnotesize\sffamily,
+    minimum width=3.8cm, minimum height=0.60cm, inner sep=3pt},
+  bb/.style={
+    draw=cGrn, fill=cGrn!12, rounded corners=3pt,
+    text centered, font=\footnotesize\sffamily,
+    minimum width=3.8cm, minimum height=0.55cm, inner sep=2pt},
+  ga/.style={
+    draw=cBlu, fill=cBlu!12, rounded corners=2pt,
+    text centered, font=\scriptsize\sffamily,
+    minimum width=1.75cm, minimum height=0.72cm, inner sep=2pt},
+  la/.style={
+    draw=cOra, fill=cOra!12, rounded corners=2pt,
+    text centered, font=\scriptsize\sffamily,
+    minimum width=1.75cm, minimum height=0.72cm, inner sep=2pt},
+  cb/.style={
+    draw=gray!55, fill=gray!7, rounded corners=2pt,
+    text centered, font=\scriptsize\sffamily,
+    minimum width=3.8cm, minimum height=0.45cm, inner sep=2pt},
+  dualframe/.style={
+    draw=black!40, fill=yellow!5,
+    rounded corners=5pt, inner sep=5pt,
+    dashed, line width=0.7pt},
+  %── FL diagram nodes ──────────────────────────────────────────────────────
+  sv/.style={
+    draw=cGry!80, fill=cGry!10, rounded corners=5pt,
+    minimum width=8.2cm, minimum height=1.4cm,
+    text centered, font=\small\sffamily, inner sep=6pt},
+  cl/.style={
+    draw=cBlu!70, fill=cBlu!8, rounded corners=4pt,
+    minimum width=1.75cm, minimum height=1.0cm,
+    text centered, font=\scriptsize\sffamily, inner sep=4pt},
+  gp/.style={
+    draw=cBlu!70, fill=cBlu!8, rounded corners=3pt,
+    font=\scriptsize\sffamily, inner sep=4pt,
+    text width=3.6cm, text centered},
+  lp/.style={
+    draw=cOra!80, fill=cOra!8, rounded corners=3pt,
+    font=\scriptsize\sffamily, inner sep=4pt,
+    text width=3.4cm, text centered},
+  %── Arrows ────────────────────────────────────────────────────────────────
+  va/.style={-{Stealth[length=5pt,width=3.5pt]},
+             line width=0.9pt, draw=black!60},
+  da/.style={-{Stealth[length=5pt,width=3.5pt]},
+             line width=1.2pt, draw=cBlu!80},
+  ua/.style={-{Stealth[length=5pt,width=3.5pt]},
+             line width=1.2pt, draw=cOra!90},
+}
+
+% ---------------------------------------------------------------------------
+\begin{document}
+\begin{tikzpicture}
+
+% =============================================================================
+% LEFT PANEL: DualAttentionResNet1D Architecture
+% =============================================================================
+
+% Panel title
+\node[font=\normalsize\bfseries\sffamily] (ltitle) at (0, 0.4)
+  {(a) DualAttentionResNet1D};
+
+% I/O and backbone nodes
+\node[io, below=0.30cm of ltitle] (input)
+  {Input: 12-lead ECG ($12{\times}5000$)};
+
+\node[bb, below=0.28cm of input]  (conv)
+  {Conv1D $+$ BN $+$ ReLU $+$ MaxPool};
+
+\node[bb, below=0.22cm of conv]   (r1)
+  {ResNet Layer 1\quad\textit{64 ch}};
+
+\node[bb, below=0.18cm of r1]     (r2)
+  {ResNet Layer 2\quad\textit{128 ch}};
+
+\node[bb, below=0.18cm of r2]     (r3)
+  {ResNet Layer 3\quad\textit{256 ch}};
+
+\node[bb, below=0.18cm of r3]     (r4)
+  {ResNet Layer 4\quad\textit{512 ch}};
+
+\node[bb, below=0.22cm of r4]     (pe)
+  {Positional Encoding};
+
+% -------------------------------------------------
+% Dual Attention Block 1
+% -------------------------------------------------
+\node[font=\scriptsize\bfseries\sffamily, below=0.55cm of pe]
+  (da1lbl) {Dual Attention Block 1};
+
+\node[ga, below=0.12cm of da1lbl, xshift=-1.0cm] (g1)
+  {Global Attn\\$H_g$ heads};
+
+\node[la, below=0.12cm of da1lbl, xshift=+1.0cm] (l1)
+  {Local Attn\\$H_l$ heads};
+
+% Combine node centred between g1.south and l1.south
+\node[cb] at ($(g1.south)!0.5!(l1.south)+(0,-0.35)$) (cb1)
+  {Concat $+\,\mathbf{W}_c +$ FFN $+$ LN};
+
+\begin{scope}[on background layer]
+  \node[dualframe, fit=(da1lbl)(g1)(l1)(cb1)] (da1) {};
+\end{scope}
+
+% -------------------------------------------------
+% Dual Attention Block 2
+% -------------------------------------------------
+\node[font=\scriptsize\bfseries\sffamily, below=0.70cm of cb1]
+  (da2lbl) {Dual Attention Block 2};
+
+\node[ga, below=0.12cm of da2lbl, xshift=-1.0cm] (g2)
+  {Global Attn\\$H_g$ heads};
+
+\node[la, below=0.12cm of da2lbl, xshift=+1.0cm] (l2)
+  {Local Attn\\$H_l$ heads};
+
+\node[cb] at ($(g2.south)!0.5!(l2.south)+(0,-0.35)$) (cb2)
+  {Concat $+\,\mathbf{W}_c +$ FFN $+$ LN};
+
+\begin{scope}[on background layer]
+  \node[dualframe, fit=(da2lbl)(g2)(l2)(cb2)] (da2) {};
+\end{scope}
+
+% Classifier head
+\node[bb, below=0.55cm of cb2] (gap)
+  {Global Average Pooling (GAP)};
+
+\node[bb, below=0.22cm of gap]  (fc)
+  {FC $+$ Sigmoid};
+
+\node[io, below=0.28cm of fc]   (out)
+  {Output: $C$-class prediction};
+
+% ------ Left-panel arrows -----------------------------------------------
+% Backbone stack
+\foreach \s/\t in {input/conv, conv/r1, r1/r2, r2/r3, r3/r4, r4/pe}
+  \draw[va] (\s) -- (\t);
+
+% pe → DA Block 1 header
+\draw[va] (pe.south) -- (da1lbl.north);
+
+% DA1 header fans to global and local branches
+\draw[va] (da1lbl.south) -- (g1.north);
+\draw[va] (da1lbl.south) -- (l1.north);
+
+% Branches merge into combine node
+\draw[va] (g1.south) -- (cb1.north -| g1);
+\draw[va] (l1.south) -- (cb1.north -| l1);
+
+% DA Block 1 → DA Block 2 header
+\draw[va] (da1.south) -- (da2lbl.north);
+
+% DA2 header fans to branches
+\draw[va] (da2lbl.south) -- (g2.north);
+\draw[va] (da2lbl.south) -- (l2.north);
+
+% Branches merge into combine node
+\draw[va] (g2.south) -- (cb2.north -| g2);
+\draw[va] (l2.south) -- (cb2.north -| l2);
+
+% DA Block 2 → classifier
+\draw[va] (da2.south) -- (gap.north);
+\draw[va] (gap)  -- (fc);
+\draw[va] (fc)   -- (out);
+
+% Color key (bottom of left panel)
+\node[font=\tiny\sffamily, below=0.35cm of out, color=cGrn]
+  (key1) {\rule{8pt}{6pt}\;Backbone (global, FedAvg)};
+\node[font=\tiny\sffamily, right=0.4cm of key1, color=cBlu]
+  (key2) {\rule{8pt}{6pt}\;Global Attn (FedAvg)};
+\node[font=\tiny\sffamily, right=0.4cm of key2, color=cOra]
+  {\rule{8pt}{6pt}\;Local Attn (per-client)};
+
+
+% =============================================================================
+% RIGHT PANEL: Federated Learning Protocol
+% =============================================================================
+
+% Panel title — aligned to top of left panel, offset right
+\node[font=\normalsize\bfseries\sffamily]
+  at ([xshift=7.5cm]ltitle) (rtitle)
+  {(b) Federated Training Protocol};
+
+% Server box
+\node[sv, below=0.30cm of rtitle] (srv)
+  {\textbf{Server}\\[3pt]
+   $\theta^{g}$: global params \quad
+   $\bigl\{\theta^{l}_{k}\bigr\}_{k=1}^{K}$: per-client local params\\[2pt]
+   FedAvg: $\;\theta^{g}_{t+1} = \sum_{k=1}^{K}
+     \dfrac{n_k}{n}\,\theta^{g}_{k,t+1}$};
+
+% 4 client boxes
+\node[cl, below=2.8cm of srv, xshift=-3.1cm] (c1)
+  {Client 1\\(SPH)};
+\node[cl, below=2.8cm of srv, xshift=-1.0cm] (c2)
+  {Client 2\\(PTB-XL)};
+\node[cl, below=2.8cm of srv, xshift=+1.0cm] (c3)
+  {Client 3\\(SXPH)};
+\node[cl, below=2.8cm of srv, xshift=+3.1cm] (c4)
+  {Client 4\\(G12EC)};
+
+% ------ Down arrows (server → clients, blue) --------------------------------
+% Left-shifted by 0.13cm so up/down arrows don't overlap
+\draw[da] ($(srv.south -| c1)+(-0.13,0)$) -- ($(c1.north)+(-0.13,0)$);
+\draw[da] ($(srv.south -| c2)+(-0.13,0)$) -- ($(c2.north)+(-0.13,0)$);
+\draw[da] ($(srv.south -| c3)+(-0.13,0)$) -- ($(c3.north)+(-0.13,0)$);
+\draw[da] ($(srv.south -| c4)+(-0.13,0)$) -- ($(c4.north)+(-0.13,0)$);
+
+% ------ Up arrows (clients → server, orange) --------------------------------
+\draw[ua] ($(c1.north)+(+0.13,0)$) -- ($(srv.south -| c1)+(+0.13,0)$);
+\draw[ua] ($(c2.north)+(+0.13,0)$) -- ($(srv.south -| c2)+(+0.13,0)$);
+\draw[ua] ($(c3.north)+(+0.13,0)$) -- ($(srv.south -| c3)+(+0.13,0)$);
+\draw[ua] ($(c4.north)+(+0.13,0)$) -- ($(srv.south -| c4)+(+0.13,0)$);
+
+% Arrow labels — between client pairs to avoid crowding
+\node[font=\tiny\sffamily, color=cBlu!80,
+      below=0.25cm of srv, xshift=-2.1cm, align=center]
+  {$\downarrow$ Send $\theta^{g}_{t},\,\theta^{l}_{k,t}$};
+
+\node[font=\tiny\sffamily, color=cOra!90,
+      below=0.25cm of srv, xshift=+2.1cm, align=center]
+  {$\uparrow$ Upload $\theta^{g}_{k,t+1},\,n_k$};
+
+% ------ Parameter partition boxes -------------------------------------------
+% Use midpoint of all 4 clients as centering anchor
+\coordinate (cli4mid) at ($(c1.south)!0.5!(c4.south)$);
+
+% gbox: anchor at north east, 0.3cm left of cli4mid
+\node[gp, anchor=north east] at ($(cli4mid)+(- 0.3,-1.6)$) (gbox)
+  {\textbf{Global params} $\theta^{g}$:\\
+   ResNet backbone\\
+   Global Attn branches\\
+   FFN, classification head\\[2pt]
+   \textit{Aggregated via FedAvg}};
+
+% lbox: anchor at north west, 0.3cm right of cli4mid
+\node[lp, anchor=north west] at ($(cli4mid)+(+0.3,-1.6)$) (lbox)
+  {\textbf{Local params} $\theta^{l}_{k}$:\\
+   Local Attn branches\\[2pt]
+   \textit{Kept per-client,\\no aggregation}};
+
+% ------ Communication steps (below param boxes, centred between them) --------
+% parambot: midpoint between bottom-left of gbox and bottom-right of lbox
+\coordinate (parambot) at ($(gbox.south west)!0.5!(lbox.south east)+(0,-0.65)$);
+\node[font=\scriptsize\sffamily, anchor=north,
+      text width=7.8cm, align=left] at (parambot) (steps)
+  {\textbf{Each round $t$:}\quad
+   \textbf{1.}~Receive $(\theta^{g}_{t},\theta^{l}_{k,t})$\quad
+   \textbf{2.}~Local SGD $E$ epochs\quad
+   \textbf{3.}~Upload $(\theta^{g}_{k,t+1},n_k)$\quad
+   \textbf{4.}~Server: FedAvg $\theta^{g}$, store $\theta^{l}_{k}$};
+
+% =============================================================================
+% Dividing line between panels — fixed-length vertical at panel midpoint
+% =============================================================================
+\coordinate (divtop) at ($(ltitle.north east)!0.5!(rtitle.north west)+(0,0.4)$);
+\draw[gray!40, dashed, line width=0.6pt] (divtop) -- ++(0,-16);
+
+\end{tikzpicture}
+\end{document}
