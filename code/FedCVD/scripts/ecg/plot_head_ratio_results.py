@@ -290,6 +290,87 @@ def plot_combined_global_metrics(df):
     return fig
 
 
+def plot_personalization_benefit(df, metric_name: str, ylabel: str, title: str):
+    """
+    Line graph showing per-client delta vs the 8G:0L (no-personalization) baseline.
+
+    For each head ratio configuration, compute for each of the 4 clients:
+        delta_i = mean_metric(ratio, client_i) - mean_metric(8G:0L, client_i)
+
+    Then aggregate across clients:
+        high = max(delta_i)   — best-benefiting client
+        mean = mean(delta_i)  — average benefit
+        low  = min(delta_i)   — worst-affected client
+
+    A shaded band between high and low shows the spread.
+    """
+    clients = ['SPH', 'PTB-XL', 'SXPH', 'G12EC']
+
+    # Locate the 8G:0L baseline row
+    baseline_mask = df['ratio'] == '8-0'
+    if not baseline_mask.any():
+        raise ValueError("Could not find ratio '8-0' (8G:0L) in dataframe.")
+    baseline = df[baseline_mask].iloc[0]
+
+    # Sort descending by global heads so x-axis reads 8G:0L → 0G:8L
+    # (increasing personalization left to right)
+    df = df.copy()
+    df['_g'] = df['ratio'].apply(lambda r: int(r.split('-')[0]))
+    df = df.sort_values('_g', ascending=False).reset_index(drop=True)
+
+    # Format x-axis labels: "8-0" → "8G:0L"
+    x_labels = [f"{r.split('-')[0]}G:{r.split('-')[1]}L" for r in df['ratio']]
+    x = np.arange(len(df))
+
+    highs, means, lows = [], [], []
+    for _, row in df.iterrows():
+        deltas = [
+            row[f'{c}_{metric_name}_mean'] - baseline[f'{c}_{metric_name}_mean']
+            for c in clients
+        ]
+        highs.append(max(deltas))
+        means.append(float(np.mean(deltas)))
+        lows.append(min(deltas))
+
+    highs = np.array(highs)
+    means = np.array(means)
+    lows  = np.array(lows)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Reference line at zero (= 8G:0L performance)
+    ax.axhline(0, color='#555555', linewidth=1.2, linestyle='--', alpha=0.7,
+               label='8G:0L baseline (Δ = 0)')
+
+    # Shaded band between high and low
+    ax.fill_between(x, lows, highs, alpha=0.12, color='#1f77b4')
+
+    # Three lines
+    ax.plot(x, highs, 'o-', color='#2ca02c', linewidth=2,   markersize=7,
+            label='High (best client)')
+    ax.plot(x, means, 's-', color='#1f77b4', linewidth=2.5, markersize=8,
+            label='Mean (avg. clients)', zorder=5)
+    ax.plot(x, lows,  '^-', color='#d62728', linewidth=2,   markersize=7,
+            label='Low (worst client)')
+
+    # Always anchor y-axis so zero baseline is visible; extend into negative
+    # territory when any client's delta is negative (worse than 8G:0L).
+    data_min = float(lows.min())
+    data_max = float(highs.max())
+    margin = max((data_max - data_min) * 0.12, 0.5)
+    ax.set_ylim(min(data_min, 0) - margin, max(data_max, 0) + margin)
+
+    ax.set_xlabel('Head Ratio (Global : Local)', fontsize=13)
+    ax.set_ylabel(f'Δ {ylabel} vs 8G:0L', fontsize=13)
+    ax.set_title(title, fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(x_labels, fontsize=11)
+    ax.legend(loc='upper right', fontsize=10)
+
+    plt.tight_layout()
+    return fig
+
+
 def main():
     parser = argparse.ArgumentParser(description="Plot head ratio results with error bars")
     parser.add_argument("--show", action="store_true", help="Show plots interactively")
@@ -359,6 +440,21 @@ def main():
     fig10 = plot_combined_global_metrics(df)
     fig10.savefig(OUTPUT_DIR / 'head_ratio_global_combined.png', dpi=150, bbox_inches='tight')
     print(f"  Saved: head_ratio_global_combined.png")
+
+    # === PERSONALIZATION BENEFIT PLOTS ===
+    for metric_name, ylabel in [
+        ('micro_f1', 'Micro-F1 (%)'),
+        ('acc',      'Accuracy (%)'),
+        ('mAP',      'mAP (%)'),
+    ]:
+        fig = plot_personalization_benefit(
+            df, metric_name, ylabel,
+            f'Personalization Benefit vs 8G:0L — {ylabel.split()[0]}',
+        )
+        fname = f'head_ratio_personalization_{metric_name}.png'
+        fig.savefig(OUTPUT_DIR / fname, dpi=150, bbox_inches='tight')
+        print(f"  Saved: {fname}")
+        plt.close(fig)
 
     print(f"\nAll plots saved to: {OUTPUT_DIR}")
 

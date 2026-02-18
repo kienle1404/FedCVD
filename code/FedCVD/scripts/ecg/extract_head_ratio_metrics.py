@@ -109,7 +109,9 @@ def extract_metrics(run_dir: Path) -> dict | None:
         'settings': {...}
     }
     """
-    metric_file = run_dir / "server" / "metric.json"
+    # Prefer corrected metrics (from reevaluate_checkpoints.py) over original
+    metric_corrected = run_dir / "server" / "metric_corrected.json"
+    metric_file = metric_corrected if metric_corrected.exists() else run_dir / "server" / "metric.json"
     settings_file = run_dir / "setting.json"
 
     if not metric_file.exists():

@@ -1,0 +1,71 @@
+\documentclass[a4paper]{article}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{a4paper, landscape, left=1.5cm, right=1.5cm, top=2cm, bottom=2cm}
+
+\begin{document}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Per-Client Micro-F1 (\%) on Head Ratio Experiment}
+  \begin{tabular}{l|cccc|c}
+    \toprule
+    Head Ratio & SPH & PTB-XL & SXPH & G12EC & Global \\
+    \midrule
+    8G:0L & $80.68 \pm 2.20$ & $56.67 \pm 2.09$ & $78.11 \pm 1.15$ & $68.26 \pm 1.51$ & \textbf{$72.68 \pm 1.12$} \\
+    7G:1L & $87.50 \pm 0.23$ & $72.28 \pm 0.68$ & \textbf{$86.78 \pm 0.60$} & $73.55 \pm 0.91$ & $63.43 \pm 3.01$ \\
+    6G:2L & $86.96 \pm 1.15$ & $70.06 \pm 4.11$ & $85.65 \pm 2.55$ & $70.72 \pm 3.41$ & $57.52 \pm 2.78$ \\
+    5G:3L & \textbf{$87.76 \pm 0.54$} & $73.99 \pm 1.06$ & $86.20 \pm 0.36$ & $73.20 \pm 1.69$ & $61.92 \pm 4.90$ \\
+    4G:4L & $86.98 \pm 0.55$ & $72.62 \pm 1.69$ & $85.66 \pm 1.23$ & $73.24 \pm 2.28$ & $65.62 \pm 3.32$ \\
+    3G:5L & $87.41 \pm 0.56$ & $73.12 \pm 1.14$ & $85.74 \pm 1.10$ & $73.72 \pm 1.95$ & $65.05 \pm 6.22$ \\
+    2G:6L & $86.78 \pm 0.85$ & $70.30 \pm 3.52$ & $85.21 \pm 1.71$ & $71.21 \pm 3.82$ & $63.36 \pm 5.93$ \\
+    1G:7L & $86.64 \pm 0.50$ & $72.20 \pm 0.47$ & $85.18 \pm 0.59$ & \textbf{$74.29 \pm 1.00$} & $66.77 \pm 5.49$ \\
+    0G:8L & $87.48 \pm 0.37$ & \textbf{$75.20 \pm 1.78$} & $86.39 \pm 1.21$ & $74.05 \pm 3.00$ & $50.79 \pm 1.74$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\clearpage
+
+\begin{table}[htbp]
+  \centering
+  \caption{Per-Client Accuracy (\%) on Head Ratio Experiment}
+  \begin{tabular}{l|cccc|c}
+    \toprule
+    Head Ratio & SPH & PTB-XL & SXPH & G12EC & Global \\
+    \midrule
+    8G:0L & $71.71 \pm 3.79$ & $36.71 \pm 2.10$ & $69.83 \pm 1.10$ & $48.24 \pm 2.21$ & \textbf{$61.23 \pm 1.66$} \\
+    7G:1L & $82.58 \pm 0.19$ & $53.74 \pm 1.05$ & $80.36 \pm 1.01$ & $52.63 \pm 1.41$ & $48.77 \pm 3.26$ \\
+    6G:2L & $82.40 \pm 1.67$ & $50.93 \pm 4.91$ & $79.18 \pm 2.49$ & $48.48 \pm 3.57$ & $42.30 \pm 4.13$ \\
+    5G:3L & $83.15 \pm 0.65$ & $56.75 \pm 0.83$ & $79.66 \pm 0.58$ & $51.39 \pm 2.67$ & $45.67 \pm 6.66$ \\
+    4G:4L & $82.25 \pm 0.63$ & $53.70 \pm 2.70$ & $78.04 \pm 2.10$ & $51.89 \pm 2.69$ & $51.80 \pm 4.55$ \\
+    3G:5L & $82.22 \pm 1.44$ & $54.14 \pm 2.43$ & $78.22 \pm 2.36$ & $51.88 \pm 1.76$ & $50.28 \pm 8.04$ \\
+    2G:6L & $81.61 \pm 0.77$ & $50.88 \pm 4.59$ & $77.49 \pm 2.34$ & $48.98 \pm 4.38$ & $49.24 \pm 7.86$ \\
+    1G:7L & $80.97 \pm 1.54$ & $52.01 \pm 1.49$ & $77.48 \pm 0.94$ & $52.68 \pm 1.74$ & $54.36 \pm 6.11$ \\
+    0G:8L & \textbf{$83.86 \pm 0.35$} & \textbf{$58.33 \pm 1.92$} & \textbf{$80.60 \pm 1.45$} & \textbf{$53.12 \pm 3.52$} & $31.29 \pm 1.73$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\clearpage
+
+\begin{table}[htbp]
+  \centering
+  \caption{Per-Client mAP (\%) on Head Ratio Experiment}
+  \begin{tabular}{l|cccc|c}
+    \toprule
+    Head Ratio & SPH & PTB-XL & SXPH & G12EC & Global \\
+    \midrule
+    8G:0L & $57.27 \pm 0.97$ & $56.46 \pm 2.61$ & $39.67 \pm 0.97$ & $42.59 \pm 1.89$ & \textbf{$54.81 \pm 1.91$} \\
+    7G:1L & $59.43 \pm 0.58$ & $59.61 \pm 0.91$ & $40.19 \pm 0.45$ & $43.57 \pm 0.54$ & $45.98 \pm 0.44$ \\
+    6G:2L & $56.58 \pm 3.84$ & $57.69 \pm 4.70$ & $38.43 \pm 2.23$ & $40.72 \pm 2.55$ & $43.80 \pm 4.06$ \\
+    5G:3L & $59.15 \pm 0.64$ & \textbf{$61.27 \pm 1.21$} & $40.46 \pm 0.39$ & $43.06 \pm 0.96$ & $48.42 \pm 2.20$ \\
+    4G:4L & $58.83 \pm 2.19$ & $59.26 \pm 2.37$ & $40.13 \pm 1.35$ & $43.31 \pm 2.15$ & $50.28 \pm 2.41$ \\
+    3G:5L & \textbf{$59.72 \pm 0.88$} & $60.51 \pm 1.03$ & $40.45 \pm 0.45$ & \textbf{$43.83 \pm 1.32$} & $50.98 \pm 4.19$ \\
+    2G:6L & $56.41 \pm 4.01$ & $57.43 \pm 3.63$ & $38.59 \pm 2.64$ & $41.74 \pm 2.89$ & $49.93 \pm 3.47$ \\
+    1G:7L & $59.26 \pm 0.89$ & $60.15 \pm 1.13$ & \textbf{$40.58 \pm 0.35$} & $43.36 \pm 0.44$ & $51.09 \pm 1.91$ \\
+    0G:8L & \textbf{$59.72 \pm 1.87$} & $61.11 \pm 2.63$ & $39.89 \pm 1.31$ & $43.78 \pm 2.65$ & $44.49 \pm 2.43$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\clearpage
+
+\end{document}

@@ -14,6 +14,7 @@ Options:
 """
 
 import json
+import re
 import argparse
 import numpy as np
 from pathlib import Path
@@ -26,6 +27,11 @@ DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "output"
 
 # Client names matching the paper
 CLIENT_NAMES = ["SPH", "PTB-XL", "SXPH", "G12EC"]
+
+# Algorithms where LOCAL metrics should use the personal/personalized model
+# (from client-side metric files) instead of the server's global model evaluation.
+# For these methods, the paper evaluates each client's personalized model on its own test set.
+PERSONALIZED_ALGORITHMS = {"ditto", "fedala"}
 
 # Display names for algorithms (maps internal names to paper format)
 DISPLAY_NAMES = {
@@ -42,6 +48,15 @@ DISPLAY_NAMES = {
     "fedala": "FedALA",
     "fedsm": "FedSM",
     "feddualatt": "FedDualAtt",
+    "feddualatt_8g0l": "FedDualAtt (8G:0L)",
+    "feddualatt_7g1l": "FedDualAtt (7G:1L)",
+    "feddualatt_6g2l": "FedDualAtt (6G:2L)",
+    "feddualatt_5g3l": "FedDualAtt (5G:3L)",
+    "feddualatt_4g4l": "FedDualAtt (4G:4L)",
+    "feddualatt_3g5l": "FedDualAtt (3G:5L)",
+    "feddualatt_2g6l": "FedDualAtt (2G:6L)",
+    "feddualatt_1g7l": "FedDualAtt (1G:7L)",
+    "feddualatt_0g8l": "FedDualAtt (0G:8L)",
 }
 
 
@@ -67,6 +82,95 @@ def find_latest_run(base_path: Path, algorithm: str) -> Path | None:
         return None
 
     return max(timestamp_dirs, key=lambda d: d.name)
+
+
+def find_head_ratio_runs(base_path: Path) -> dict:
+    """
+    Find all head ratio experiment runs organised by ratio and seed.
+
+    Returns:
+        {"8-0": {42: Path, 456: Path, ...}, "7-1": {...}, ...}
+    """
+    search_path = base_path / "dual_attention_resnet1d" / "feddualatt"
+    if not search_path.exists():
+        return {}
+
+    ratio_pattern = re.compile(r'global(\d+)_local(\d+)')
+    seed_pattern = re.compile(r'seed(\d+)')
+    runs = {}
+
+    for ratio_dir in search_path.iterdir():
+        if not ratio_dir.is_dir():
+            continue
+        m = ratio_pattern.match(ratio_dir.name)
+        if not m:
+            continue
+
+        g, l = int(m.group(1)), int(m.group(2))
+        key = f"{g}-{l}"
+        runs[key] = {}
+
+        for seed_dir in ratio_dir.iterdir():
+            if not seed_dir.is_dir():
+                continue
+            sm = seed_pattern.match(seed_dir.name)
+            if sm:
+                seed = int(sm.group(1))
+                ts_dirs = [d for d in seed_dir.iterdir() if d.is_dir() and d.name.isdigit()]
+                if ts_dirs:
+                    runs[key][seed] = max(ts_dirs, key=lambda d: d.name)
+            elif seed_dir.name.isdigit():
+                # Legacy: timestamp directly under ratio dir
+                runs[key][42] = seed_dir
+
+    return {k: v for k, v in runs.items() if v}
+
+
+def aggregate_seed_metrics(seed_results: dict) -> dict | None:
+    """
+    Aggregate per-seed metrics into mean ± std.
+
+    Args:
+        seed_results: {seed: metrics_dict, ...}  (metrics_dict from extract_metrics helper)
+
+    Returns dict with 'clients', 'clients_std', 'global', 'global_std', 'num_seeds', 'seeds'.
+    """
+    valid = {k: v for k, v in seed_results.items() if v is not None}
+    if not valid:
+        return None
+
+    result = {
+        'num_seeds': len(valid),
+        'seeds': sorted(valid.keys()),
+        'clients': {},
+        'clients_std': {},
+        'global': None,
+        'global_std': None,
+        'cross_eval': None,
+        'run_dir': '',
+        'round': None,
+    }
+
+    for ci in range(4):
+        vals = {m: [] for m in ('acc', 'micro_f1', 'mAP')}
+        for mets in valid.values():
+            if ci in mets.get('clients', {}):
+                for m in vals:
+                    vals[m].append(mets['clients'][ci][m])
+        if vals['micro_f1']:
+            result['clients'][ci] = {m: float(np.mean(vals[m])) for m in vals}
+            result['clients_std'][ci] = {m: float(np.std(vals[m])) for m in vals}
+
+    g_vals = {m: [] for m in ('acc', 'micro_f1', 'mAP')}
+    for mets in valid.values():
+        if mets.get('global'):
+            for m in g_vals:
+                g_vals[m].append(mets['global'][m])
+    if g_vals['micro_f1']:
+        result['global'] = {m: float(np.mean(g_vals[m])) for m in g_vals}
+        result['global_std'] = {m: float(np.std(g_vals[m])) for m in g_vals}
+
+    return result
 
 
 def parse_cross_eval_from_metric_files(run_dir: Path, algorithm: str) -> dict | None:
@@ -257,7 +361,11 @@ def extract_per_client_metrics(run_dir: Path, algorithm: str) -> dict | None:
     elif algorithm == "centralized":
         metric_file = run_dir / "metric.json"
     else:
-        metric_file = run_dir / "server" / "metric.json"
+        # Prefer corrected metrics (produced by reevaluate_checkpoints.py) when available.
+        # For FedDualAtt head ratio runs the original metric.json evaluated with zeroed
+        # local params (Bug #2); metric_corrected.json loads per-client local heads first.
+        _mc = run_dir / "server" / "metric_corrected.json"
+        metric_file = _mc if _mc.exists() else run_dir / "server" / "metric.json"
 
     if not metric_file.exists():
         return None
@@ -339,6 +447,22 @@ def extract_per_client_metrics(run_dir: Path, algorithm: str) -> dict | None:
         # Get cross-evaluation from per-client metric files
         cross_eval = parse_cross_eval_from_metric_files(run_dir, algorithm)
         result['cross_eval'] = cross_eval
+
+        # For personalized algorithms, override LOCAL per-client metrics with
+        # the diagonal of the cross-eval matrix (personal model on own data).
+        # The server evaluates the global model, but the paper reports the
+        # personalized model's performance for these methods.
+        if algorithm in PERSONALIZED_ALGORITHMS and cross_eval:
+            for i in range(4):
+                acc = cross_eval['accuracy'][i][i]
+                micro_f1 = cross_eval['micro_f1'][i][i]
+                mAP = cross_eval['mAP'][i][i]
+                if micro_f1 is not None:
+                    result['clients'][i] = {
+                        'acc': acc if acc is not None else 0,
+                        'micro_f1': micro_f1,
+                        'mAP': mAP if mAP is not None else 0,
+                    }
 
         return result
 
@@ -548,6 +672,12 @@ def save_to_csv(results: dict, csv_path: str):
         fieldnames.extend([f'{name}_acc', f'{name}_micro_f1', f'{name}_mAP'])
     fieldnames.extend(['global_acc', 'global_micro_f1', 'global_mAP'])
 
+    # Std columns (populated for multi-seed head ratio entries, empty for baselines)
+    for name in CLIENT_NAMES:
+        fieldnames.extend([f'{name}_acc_std', f'{name}_micro_f1_std', f'{name}_mAP_std'])
+    fieldnames.extend(['global_acc_std', 'global_micro_f1_std', 'global_mAP_std'])
+    fieldnames.append('num_seeds')
+
     # Add cross-eval columns for each metric
     for metric in ['acc', 'f1', 'mAP']:
         for i, train_name in enumerate(CLIENT_NAMES):
@@ -568,30 +698,56 @@ def save_to_csv(results: dict, csv_path: str):
             row['global_acc'] = ''
             row['global_micro_f1'] = ''
             row['global_mAP'] = ''
+            for name in CLIENT_NAMES:
+                row[f'{name}_acc_std'] = ''
+                row[f'{name}_micro_f1_std'] = ''
+                row[f'{name}_mAP_std'] = ''
+            row['global_acc_std'] = ''
+            row['global_micro_f1_std'] = ''
+            row['global_mAP_std'] = ''
+            row['num_seeds'] = ''
             for metric in ['acc', 'f1', 'mAP']:
                 for i, train_name in enumerate(CLIENT_NAMES):
                     for j, test_name in enumerate(CLIENT_NAMES):
                         row[f'cross_{metric}_{train_name}_to_{test_name}'] = ''
             row['run_dir'] = ''
         else:
+            clients_std = data.get('clients_std', {})
+            global_std = data.get('global_std') or {}
+
             for i, name in enumerate(CLIENT_NAMES):
                 if i in data['clients']:
                     row[f'{name}_acc'] = f"{data['clients'][i]['acc']*100:.2f}"
                     row[f'{name}_micro_f1'] = f"{data['clients'][i]['micro_f1']*100:.2f}"
                     row[f'{name}_mAP'] = f"{data['clients'][i]['mAP']*100:.2f}"
+                    std = clients_std.get(i, {})
+                    row[f'{name}_acc_std'] = f"{std['acc']*100:.2f}" if std else ''
+                    row[f'{name}_micro_f1_std'] = f"{std['micro_f1']*100:.2f}" if std else ''
+                    row[f'{name}_mAP_std'] = f"{std['mAP']*100:.2f}" if std else ''
                 else:
                     row[f'{name}_acc'] = ''
                     row[f'{name}_micro_f1'] = ''
                     row[f'{name}_mAP'] = ''
+                    row[f'{name}_acc_std'] = ''
+                    row[f'{name}_micro_f1_std'] = ''
+                    row[f'{name}_mAP_std'] = ''
 
             if data['global']:
                 row['global_acc'] = f"{data['global']['acc']*100:.2f}"
                 row['global_micro_f1'] = f"{data['global']['micro_f1']*100:.2f}"
                 row['global_mAP'] = f"{data['global']['mAP']*100:.2f}"
+                row['global_acc_std'] = f"{global_std['acc']*100:.2f}" if global_std else ''
+                row['global_micro_f1_std'] = f"{global_std['micro_f1']*100:.2f}" if global_std else ''
+                row['global_mAP_std'] = f"{global_std['mAP']*100:.2f}" if global_std else ''
             else:
                 row['global_acc'] = ''
                 row['global_micro_f1'] = ''
                 row['global_mAP'] = ''
+                row['global_acc_std'] = ''
+                row['global_micro_f1_std'] = ''
+                row['global_mAP_std'] = ''
+
+            row['num_seeds'] = data.get('num_seeds', '')
 
             # Cross-evaluation (new structure with accuracy, micro_f1, mAP)
             cross_eval = data.get('cross_eval')
@@ -620,101 +776,299 @@ def save_to_csv(results: dict, csv_path: str):
     print(f"\nResults saved to: {csv_path}")
 
 
+def _latex_cell(data: dict, client_idx_or_none, metric: str) -> str:
+    """
+    Format a single LaTeX cell value.
+    - For entries with std (head ratio), produces  mean$\\pm$std.
+    - For plain entries, produces the mean only.
+    - client_idx_or_none=None means global metric.
+    """
+    if client_idx_or_none is None:
+        src = data.get('global')
+        std_src = data.get('global_std') or {}
+    else:
+        src = data['clients'].get(client_idx_or_none)
+        std_src = (data.get('clients_std') or {}).get(client_idx_or_none, {})
+
+    if src is None:
+        return "--"
+
+    val = src[metric] * 100
+    std = std_src.get(metric, 0) * 100 if std_src else 0
+    if std > 0:
+        return f"{val:.2f}$\\pm${std:.2f}"
+    return f"{val:.2f}"
+
+
 def print_latex_tables(results: dict):
     """Print LaTeX-formatted tables for paper."""
-    print("\n" + "=" * 100)
-    print("LaTeX Table Format (Micro-F1)")
-    print("=" * 100)
-    print("\\begin{tabular}{l|cccc|c}")
-    print("\\hline")
-    print("Method & SPH & PTB-XL & SXPH & G12EC & Global \\\\")
-    print("\\hline")
 
-    for algo, data in results.items():
-        if data is None:
-            print(f"{algo} & -- & -- & -- & -- & -- \\\\")
-            continue
+    for metric, label in [('micro_f1', 'Micro-F1'), ('mAP', 'mAP'), ('acc', 'Accuracy')]:
+        print("\n" + "=" * 100)
+        print(f"LaTeX Table Format ({label})")
+        print("=" * 100)
+        print("\\begin{tabular}{l|cccc|c}")
+        print("\\hline")
+        print("Method & SPH & PTB-XL & SXPH & G12EC & Global \\\\")
+        print("\\hline")
 
-        row = algo
-        for i in range(4):
-            if i in data['clients']:
-                row += f" & {data['clients'][i]['micro_f1']*100:.2f}"
-            else:
-                row += " & --"
+        for algo, data in results.items():
+            display = DISPLAY_NAMES.get(algo, algo)
+            if data is None:
+                print(f"{display} & -- & -- & -- & -- & -- \\\\")
+                continue
 
-        if data['global']:
-            row += f" & {data['global']['micro_f1']*100:.2f}"
-        else:
-            row += " & --"
+            row = display
+            for i in range(4):
+                row += f" & {_latex_cell(data, i, metric)}"
+            row += f" & {_latex_cell(data, None, metric)}"
+            print(row + " \\\\")
 
-        print(row + " \\\\")
+        print("\\hline")
+        print("\\end{tabular}")
 
-    print("\\hline")
-    print("\\end{tabular}")
-
-    print("\n" + "=" * 100)
-    print("LaTeX Table Format (mAP)")
-    print("=" * 100)
-    print("\\begin{tabular}{l|cccc|c}")
-    print("\\hline")
-    print("Method & SPH & PTB-XL & SXPH & G12EC & Global \\\\")
-    print("\\hline")
-
-    for algo, data in results.items():
-        if data is None:
-            print(f"{algo} & -- & -- & -- & -- & -- \\\\")
-            continue
-
-        row = algo
-        for i in range(4):
-            if i in data['clients']:
-                row += f" & {data['clients'][i]['mAP']*100:.2f}"
-            else:
-                row += " & --"
-
-        if data['global']:
-            row += f" & {data['global']['mAP']*100:.2f}"
-        else:
-            row += " & --"
-
-        print(row + " \\\\")
-
-    print("\\hline")
-    print("\\end{tabular}")
-
-    # Cross-evaluation LaTeX table for one algorithm (example)
+    # Cross-evaluation LaTeX table (local clients only)
     print("\n" + "=" * 100)
     print("LaTeX Table Format (Cross-Evaluation Accuracy)")
     print("=" * 100)
-    print("% Example for one algorithm - repeat for each")
+    print("% One block per local client — repeat pattern for other algorithms")
     print("\\begin{tabular}{l|cccc}")
     print("\\hline")
     print("Train $\\backslash$ Test & SPH & PTB-XL & SXPH & G12EC \\\\")
     print("\\hline")
 
-    # Find first algorithm with cross-eval data
     for algo, data in results.items():
         if data is None or data.get('cross_eval') is None:
             continue
         cross_eval = data['cross_eval']
-        has_data = any(cross_eval[i][j] is not None for i in range(4) for j in range(4))
+        acc_matrix = cross_eval.get('accuracy', {})
+        has_data = any(
+            acc_matrix.get(i, {}).get(j) is not None
+            for i in range(4) for j in range(4)
+        )
         if not has_data:
             continue
 
-        print(f"% {algo}")
+        display = DISPLAY_NAMES.get(algo, algo)
+        print(f"% {display}")
         for i in range(4):
             row = CLIENT_NAMES[i]
             for j in range(4):
-                val = cross_eval[i][j]
-                if val is not None:
-                    row += f" & {val*100:.2f}"
-                else:
-                    row += " & --"
+                val = acc_matrix.get(i, {}).get(j)
+                row += f" & {val*100:.2f}" if val is not None else " & --"
             print(row + " \\\\")
         break
 
     print("\\hline")
     print("\\end{tabular}")
+
+
+def save_latex_file(results: dict, tex_path: str):
+    """Write a self-contained, compilable LaTeX document with all benchmark tables."""
+
+    # Groups: draw \midrule before first algorithm of each new group
+    GROUP_BREAKS = {"fedavg", "feddualatt_8g0l"}
+
+    def get_val(data, client_idx_or_none, metric):
+        """Return the raw (0-1) mean value for a cell, or None."""
+        if client_idx_or_none is None:
+            src = data.get('global')
+        else:
+            src = data['clients'].get(client_idx_or_none)
+        return src[metric] if src else None
+
+    def doc_cell(data, client_idx_or_none, metric, best_val=None):
+        """Format one table cell; bold if value equals best_val."""
+        val = get_val(data, client_idx_or_none, metric)
+        if val is None:
+            return '--'
+        if client_idx_or_none is None:
+            std_src = data.get('global_std') or {}
+        else:
+            std_src = (data.get('clients_std') or {}).get(client_idx_or_none, {})
+        std = (std_src.get(metric, 0) * 100) if std_src else 0
+        val_pct = val * 100
+        cell = f'${val_pct:.2f} \\pm {std:.2f}$' if std > 0 else f'{val_pct:.2f}'
+        if best_val is not None and abs(val - best_val) < 1e-9:
+            cell = f'\\textbf{{{cell}}}'
+        return cell
+
+    lines = [
+        r'\documentclass[a4paper]{article}',
+        r'\usepackage{booktabs}',
+        r'\usepackage{geometry}',
+        r'\geometry{a4paper, landscape, left=1.5cm, right=1.5cm, top=2cm, bottom=2cm}',
+        r'',
+        r'\begin{document}',
+        r'',
+    ]
+
+    for metric, label in [('micro_f1', 'Micro-F1'), ('acc', 'Accuracy'), ('mAP', 'mAP')]:
+        # First pass: find best value per column across all rows
+        best = {}
+        for col in list(range(4)) + [None]:
+            vals = [get_val(d, col, metric) for d in results.values()
+                    if d is not None and get_val(d, col, metric) is not None]
+            best[col] = max(vals) if vals else None
+
+        lines += [
+            r'\begin{table}[htbp]',
+            r'  \centering',
+            f'  \\caption{{Per-Client {label} (\\%) on ECG Benchmark}}',
+            r'  \begin{tabular}{l|cccc|c}',
+            r'    \toprule',
+            '    Method & SPH & PTB-XL & SXPH & G12EC & Global \\\\',
+            r'    \midrule',
+        ]
+
+        for algo, data in results.items():
+            if algo in GROUP_BREAKS:
+                lines.append(r'    \midrule')
+
+            display = DISPLAY_NAMES.get(algo, algo)
+            display = display.replace('_', r'\_')
+
+            if data is None:
+                lines.append(f'    {display} & -- & -- & -- & -- & -- \\\\')
+                continue
+
+            cells = [display]
+            for i in range(4):
+                cells.append(doc_cell(data, i, metric, best[i]))
+            cells.append(doc_cell(data, None, metric, best[None]))
+            lines.append('    ' + ' & '.join(cells) + r' \\')
+
+        lines += [
+            r'    \bottomrule',
+            r'  \end{tabular}',
+            r'\end{table}',
+            r'\clearpage',
+            r'',
+        ]
+
+    lines.append(r'\end{document}')
+    lines.append('')
+
+    with open(tex_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+
+    print(f'\nLaTeX file saved to: {tex_path}')
+
+
+def save_combined_latex_file(results: dict, tex_path: str):
+    """Write a single wide table (all 3 metrics per client/global) as a compilable .tex document.
+
+    Bold = best FL method per column; underline = second-best.
+    Centralized and local clients are shown but excluded from ranking.
+    """
+
+    NON_FL = {'centralized', 'local_client1', 'local_client2', 'local_client3', 'local_client4'}
+    GROUP_BREAKS = {'fedavg', 'feddualatt_8g0l'}
+    METRICS = ['micro_f1', 'acc', 'mAP']
+    METRIC_LABELS = ['F1', 'Acc', 'mAP']
+    CLIENT_COLS = list(range(4))
+    CLIENT_GROUP_LABELS = ['SPH', 'PTB-XL', 'SXPH', 'G12EC']
+
+    def get_val(data, col, metric):
+        src = data.get('global') if col is None else data['clients'].get(col)
+        return src[metric] if src else None
+
+    def get_std(data, col, metric):
+        src = data.get('global_std') if col is None else (data.get('clients_std') or {}).get(col, {})
+        return (src or {}).get(metric, 0)
+
+    # Find best & second-best among FL methods only for each (col, metric)
+    fl_algos = [k for k in results if k not in NON_FL and results[k] is not None]
+    ranks = {}
+    for col in CLIENT_COLS + [None]:
+        for metric in METRICS:
+            fl_vals = [get_val(results[a], col, metric) for a in fl_algos]
+            fl_vals = [v for v in fl_vals if v is not None]
+            unique_sorted = sorted(set(fl_vals), reverse=True)
+            ranks[(col, metric)] = (
+                unique_sorted[0] if unique_sorted else None,
+                unique_sorted[1] if len(unique_sorted) > 1 else None,
+            )
+
+    def fmt_cell(data, col, metric, is_fl):
+        val = get_val(data, col, metric)
+        if val is None:
+            return '--'
+        std = get_std(data, col, metric)
+        val_pct, std_pct = val * 100, std * 100
+        cell = f'${val_pct:.2f} \\pm {std_pct:.2f}$' if std_pct > 0 else f'{val_pct:.2f}'
+        if is_fl:
+            best, second = ranks[(col, metric)]
+            if best is not None and abs(val - best) < 1e-9:
+                cell = f'\\textbf{{{cell}}}'
+            elif second is not None and abs(val - second) < 1e-9:
+                cell = f'\\underline{{{cell}}}'
+        return cell
+
+    # 16-column table: Method + 5 groups × 3 metrics
+    col_spec = 'l|' + '|'.join(['ccc'] * 5)
+
+    lines = [
+        r'\documentclass[a4paper]{article}',
+        r'\usepackage{booktabs}',
+        r'\usepackage{multirow}',
+        r'\usepackage{adjustbox}',
+        r'\usepackage{geometry}',
+        r'\geometry{a4paper, landscape, left=1cm, right=1cm, top=1.5cm, bottom=1.5cm}',
+        r'',
+        r'\begin{document}',
+        r'',
+        r'\begin{table}[htbp]',
+        r'  \centering',
+        r'  \caption{ECG Benchmark: Per-Client and Global Metrics (\%)}',
+        r'  \begin{adjustbox}{max width=\linewidth}',
+        f'  \\begin{{tabular}}{{{col_spec}}}',
+        r'    \toprule',
+    ]
+
+    # Header row 1: group labels spanning 3 columns each
+    h1_cells = [r'    \multirow{2}{*}{Method}']
+    for lbl in CLIENT_GROUP_LABELS:
+        h1_cells.append(f'\\multicolumn{{3}}{{c|}}{{{lbl}}}')
+    h1_cells.append(r'\multicolumn{3}{c}{Global}')
+    lines.append(' & '.join(h1_cells) + r' \\')
+
+    # Header row 2: individual metric labels (15 columns)
+    lines.append('    & ' + ' & '.join(METRIC_LABELS * 5) + r' \\')
+    lines.append(r'    \midrule')
+
+    # Data rows
+    for algo, data in results.items():
+        if algo in GROUP_BREAKS:
+            lines.append(r'    \midrule')
+
+        display = DISPLAY_NAMES.get(algo, algo).replace('_', r'\_')
+        is_fl = algo not in NON_FL
+
+        if data is None:
+            lines.append(f'    {display} & ' + ' & '.join(['--'] * 15) + r' \\')
+            continue
+
+        cells = [display]
+        for col in CLIENT_COLS + [None]:
+            for metric in METRICS:
+                cells.append(fmt_cell(data, col, metric, is_fl))
+        lines.append('    ' + ' & '.join(cells) + r' \\')
+
+    lines += [
+        r'    \bottomrule',
+        f'  \\end{{tabular}}',
+        r'  \end{adjustbox}',
+        r'\end{table}',
+        r'',
+        r'\end{document}',
+        r'',
+    ]
+
+    with open(tex_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+
+    print(f'\nCombined LaTeX table saved to: {tex_path}')
 
 
 def main():
@@ -724,7 +1078,11 @@ def main():
     parser.add_argument("--csv", type=str, default=None,
                         help="Save results to CSV file")
     parser.add_argument("--latex", action="store_true",
-                        help="Print LaTeX-formatted tables")
+                        help="Print LaTeX-formatted tables to console")
+    parser.add_argument("--latex-file", type=str, default=None,
+                        help="Save compilable LaTeX document to .tex file")
+    parser.add_argument("--latex-combined", type=str, default=None,
+                        help="Save single combined-metric LaTeX table to .tex file")
     parser.add_argument("--cross-eval", action="store_true",
                         help="Print cross-evaluation matrices")
     args = parser.parse_args()
@@ -755,7 +1113,7 @@ def main():
     print(f"Client mapping: 0=SPH, 1=PTB-XL, 2=SXPH, 3=G12EC")
     print("-" * 100)
 
-    # Collect results
+    # Collect baseline results
     results = {}
     for algo in algorithms:
         run_dir = find_latest_run(output_path, algo)
@@ -773,6 +1131,35 @@ def main():
         print(f"[OK] {algo}: Round {metrics.get('round', 'N/A')}")
         results[algo] = metrics
 
+    # Collect head ratio results (multi-seed, aggregated)
+    head_ratio_runs = find_head_ratio_runs(output_path)
+    if head_ratio_runs:
+        print(f"\nFound {len(head_ratio_runs)} head ratio configuration(s):")
+        for ratio_key in sorted(head_ratio_runs.keys(), key=lambda x: int(x.split('-')[0]), reverse=True):
+            g, l = ratio_key.split('-')
+            algo_key = f"feddualatt_{g}g{l}l"
+            seed_runs = head_ratio_runs[ratio_key]
+
+            # Extract per-seed metrics
+            seed_metrics = {}
+            for seed, run_dir in seed_runs.items():
+                # Reuse extract_per_client_metrics but via the head-ratio metric file
+                metric_corrected = run_dir / "server" / "metric_corrected.json"
+                metric_file = metric_corrected if metric_corrected.exists() else run_dir / "server" / "metric.json"
+                if metric_file.exists():
+                    seed_metrics[seed] = extract_per_client_metrics(run_dir, "feddualatt")
+                else:
+                    seed_metrics[seed] = None
+
+            aggregated = aggregate_seed_metrics(seed_metrics)
+            if aggregated:
+                print(f"  [OK] {algo_key}: {aggregated['num_seeds']} seeds {aggregated['seeds']}")
+            else:
+                print(f"  [!] {algo_key}: No valid metrics found")
+            results[algo_key] = aggregated
+    else:
+        print("\n[!] No head ratio experiments found.")
+
     # Print tables
     print_table_2_format(results)
 
@@ -786,9 +1173,17 @@ def main():
     if args.csv:
         save_to_csv(results, args.csv)
 
-    # Print LaTeX if requested
+    # Print LaTeX to console if requested
     if args.latex:
         print_latex_tables(results)
+
+    # Save compilable LaTeX file if requested
+    if args.latex_file:
+        save_latex_file(results, args.latex_file)
+
+    # Save single combined-metric LaTeX table if requested
+    if args.latex_combined:
+        save_combined_latex_file(results, args.latex_combined)
 
 
 if __name__ == "__main__":
