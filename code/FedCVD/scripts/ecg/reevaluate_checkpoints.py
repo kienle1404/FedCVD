@@ -230,11 +230,91 @@ def evaluate_global(model, test_loaders, criterion, device):
     return metric_dict
 
 
-def evaluate_checkpoint(ckpt_path: Path, model, test_loaders, criterion, device):
+def evaluate_cross(model, test_loaders, local_attention_params, criterion, device):
+    """
+    Cross-evaluate each client's personalized model on ALL other clients' test sets.
+
+    For each source client k:
+      1. Load client k's local params into model
+      2. Evaluate on EVERY client j's test set (including j == k)
+      3. Zero local positions (restore invariant)
+
+    Returns dict: {str(source_k): {str(target_j): metric_dict}}
+    The diagonal (k == j) matches evaluate_local() results.
+    """
+    model.eval()
+    cross_metric_dict = {}
+
+    for k in range(len(test_loaders)):
+        # Load source client k's local params
+        if local_attention_params[k]:
+            model.load_state_dict(local_attention_params[k], strict=False)
+
+        cross_metric_dict[str(k)] = {}
+
+        for j, loader in enumerate(test_loaders):
+            pred_score_list, pred_label_list, true_label_list = [], [], []
+            metric = Accumulator(3)
+
+            for data, label in loader:
+                data, label = data.to(device), label.to(device)
+                with torch.no_grad():
+                    pred_score = model(data)
+                    pred_score_np = transfer_tensor_to_numpy(pred_score)
+                    pred_label_np = transfer_tensor_to_numpy(get_pred_label(pred_score))
+                    true_label_np = transfer_tensor_to_numpy(label)
+
+                    pred_score_list.append(pred_score_np)
+                    pred_label_list.append(pred_label_np)
+                    true_label_list.append(true_label_np)
+
+                    loss = criterion(pred_score, label)
+                    metric.add(
+                        float(loss) * len(label),
+                        calculate_accuracy(pred_label_np, true_label_np),
+                        len(label),
+                    )
+
+            all_pred_score = np.concatenate(pred_score_list, axis=0)
+            all_pred_label = np.concatenate(pred_label_list, axis=0)
+            all_true_label = np.concatenate(true_label_list, axis=0)
+
+            metric_dict = calculate_multilabel_metrics(
+                all_pred_score, all_pred_label, all_true_label
+            )
+            metric_dict["loss"] = metric[0] / metric[2]
+            cross_metric_dict[str(k)][str(j)] = metric_dict
+
+            diag = " (diag)" if k == j else ""
+            mAP = float(np.mean(metric_dict["average_precision_score"]))
+            print(f"    Src={CLIENT_NAMES[k]} -> Tgt={CLIENT_NAMES[j]}{diag}: "
+                  f"F1={metric_dict['micro_f1']:.4f}  mAP={mAP:.4f}")
+
+        # Restore invariant
+        _zero_local_params(model)
+
+    return cross_metric_dict
+
+
+def save_cross_eval_metrics(run_dir: Path, round_num, cross_metrics):
+    """Save cross-evaluation metrics to cross_eval_corrected.json."""
+    data = {
+        "cross_eval": {str(round_num): cross_metrics},
+    }
+    out_path = run_dir / "server" / "cross_eval_corrected.json"
+    with open(out_path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"  Saved cross-eval: {out_path}")
+    return out_path
+
+
+def evaluate_checkpoint(ckpt_path: Path, model, test_loaders, criterion, device,
+                        cross_eval: bool = False):
     """
     Re-evaluate a single checkpoint with corrected logic.
 
-    Returns (local_metric_dict, global_metric_dict) or None if checkpoint is invalid.
+    Returns (local_metric_dict, global_metric_dict, round_num[, cross_metric_dict])
+    or None if checkpoint is invalid.
     """
     ckpt = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
 
@@ -271,6 +351,15 @@ def evaluate_checkpoint(ckpt_path: Path, model, test_loaders, criterion, device)
     # GLOBAL test: global-only model on all data combined
     print("  [GLOBAL TEST]")
     global_metrics = evaluate_global(model, test_loaders, criterion, device)
+
+    if cross_eval:
+        # Ensure local positions zeroed before cross-eval
+        _zero_local_params(model)
+        print("  [CROSS EVAL]")
+        cross_metrics = evaluate_cross(
+            model, test_loaders, local_attention_params, criterion, device
+        )
+        return local_metrics, global_metrics, round_num, cross_metrics
 
     return local_metrics, global_metrics, round_num
 
@@ -441,6 +530,9 @@ def main():
     parser.add_argument("--data-fraction", type=float, default=1.0)
     parser.add_argument("--device", type=str, default=None,
                         help="Device (cuda/cpu). Auto-detected if not set.")
+    parser.add_argument("--cross-eval", action="store_true",
+                        help="Also run cross-evaluation (source client k model on all "
+                             "target test sets j), saving cross_eval_corrected.json")
     args = parser.parse_args()
 
     # Default: all head ratio runs
@@ -509,12 +601,17 @@ def main():
             print(f"  Checkpoint: {run['ckpt_path']}")
 
             result = evaluate_checkpoint(
-                run["ckpt_path"], model, test_loaders, criterion, device
+                run["ckpt_path"], model, test_loaders, criterion, device,
+                cross_eval=args.cross_eval,
             )
             if result is None:
                 continue
 
-            local_metrics, global_metrics, round_num = result
+            if args.cross_eval:
+                local_metrics, global_metrics, round_num, cross_metrics = result
+            else:
+                local_metrics, global_metrics, round_num = result
+                cross_metrics = None
 
             # Compare with original
             compare_metrics(run["run_dir"], round_num, local_metrics, global_metrics)
@@ -523,6 +620,10 @@ def main():
             save_corrected_metrics(
                 run["run_dir"], round_num, local_metrics, global_metrics
             )
+
+            # Save cross-eval metrics if requested
+            if cross_metrics is not None:
+                save_cross_eval_metrics(run["run_dir"], round_num, cross_metrics)
 
             # Collect summary
             global_f1 = global_metrics["micro_f1"]

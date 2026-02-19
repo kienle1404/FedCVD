@@ -1,0 +1,170 @@
+\documentclass[a4paper]{article}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{adjustbox}
+\usepackage{longtable}
+\usepackage{geometry}
+\geometry{a4paper, landscape, left=1cm, right=1cm, top=1.5cm, bottom=1.5cm}
+
+\begin{document}
+
+\begin{table}[htbp]
+  \centering
+  \caption{ECG Benchmark: Per-Client and Global Metrics (\%). Baseline FL rows (FedAvg--FedALA) report Mi-F1 and mAP as mean$\pm$std from the FedCVD paper; Acc is from our runs. FedDualAtt rows report mean$\pm$std from our multi-seed experiments. Bold = best, underline = second-best, ranked jointly among baseline FL methods and FedDualAtt variants.}
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{l|ccc|ccc|ccc|ccc|ccc}
+    \toprule
+    \multirow{2}{*}{Method} & \multicolumn{3}{c|}{Client1} & \multicolumn{3}{c|}{Client2} & \multicolumn{3}{c|}{Client3} & \multicolumn{3}{c|}{Client4} & \multicolumn{3}{c}{Global} \\
+    & F1 & Acc & mAP & F1 & Acc & mAP & F1 & Acc & mAP & F1 & Acc & mAP & F1 & Acc & mAP \\
+    \midrule
+    Client1 & 85.8$\pm$1.9 & 82.19 & 58.1$\pm$2.6 & 52.7$\pm$3.4 & 38.85 & 37.8$\pm$2.2 & 61.5$\pm$1.2 & 52.16 & 19.8$\pm$1.2 & 49.8$\pm$4.2 & 32.31 & 26.7$\pm$3.0 & 64.3$\pm$2.1 & 55.70 & 32.3$\pm$2.0 \\
+    Client2 & 69.9$\pm$50.0 & 56.54 & 38.9$\pm$30.0 & 76.8$\pm$90.0 & 55.89 & 55.7$\pm$50.0 & 26.3$\pm$80.0 & 7.79 & 22.7$\pm$30.0 & 42.2$\pm$80.0 & 17.32 & 31.6$\pm$60.0 & 50.4$\pm$30.0 & 32.42 & 35.9$\pm$70.0 \\
+    Client3 & 22.7$\pm$0.2 & 16.54 & 29.8$\pm$0.7 & 17.0$\pm$0.4 & 3.79 & 27.2$\pm$0.3 & 88.1$\pm$0.2 & 82.86 & 37.7$\pm$0.4 & 56.9$\pm$0.4 & 39.08 & 29.4$\pm$0.6 & 51.5$\pm$0.2 & 43.98 & 32.7$\pm$0.2 \\
+    Client4 & 23.7$\pm$2.0 & 12.58 & 31.7$\pm$2.7 & 24.7$\pm$3.3 & 3.13 & 30.5$\pm$1.5 & 61.6$\pm$5.5 & 47.92 & 25.3$\pm$2.1 & 72.3$\pm$10.2 & 36.74 & 38.5$\pm$2.8 & 44.7$\pm$4.3 & 27.50 & 29.3$\pm$2.5 \\
+    \midrule
+    FedAvg  & 69.0$\pm$10.1 & 57.66 & 58.5$\pm$1.2 & 50.3$\pm$5.3 & 27.58 & 54.4$\pm$0.5 & 77.6$\pm$0.7 & 70.49 & 37.2$\pm$0.3 & 66.3$\pm$0.9 & 47.54 & 39.5$\pm$0.5 & 67.9$\pm$3.8 & 55.64 & 50.8$\pm$0.4 \\
+    FedProx & 74.0$\pm$7.5 & 49.99 & 60.3$\pm$2.9 & 55.6$\pm$2.7 & 23.66 & 56.4$\pm$0.6 & 73.2$\pm$1.0 & 68.14 & 36.0$\pm$0.8 & 70.2$\pm$2.3 & 48.43 & \underline{43.8$\pm$1.8} & 68.8$\pm$2.6 & 51.75 & \underline{52.3$\pm$0.9} \\
+    Scaffold & 77.5$\pm$2.6 & 53.87 & 58.0$\pm$1.2 & 56.9$\pm$1.7 & 27.13 & 55.9$\pm$0.7 & 73.3$\pm$1.0 & 67.80 & 36.2$\pm$0.6 & 70.7$\pm$2.9 & 46.33 & 42.7$\pm$1.1 & \underline{70.1$\pm$0.8} & 53.27 & 52.1$\pm$0.7 \\
+    FedInit & 73.0$\pm$6.6 & 55.30 & 58.2$\pm$0.7 & 54.1$\pm$5.2 & 27.73 & 55.6$\pm$1.3 & 73.5$\pm$0.5 & 68.49 & 36.6$\pm$0.1 & 67.8$\pm$2.0 & 47.30 & 41.5$\pm$1.0 & 68.1$\pm$3.0 & 54.16 & 51.5$\pm$0.9 \\
+    Ditto   & 82.8$\pm$4.4 & 76.97 & \textbf{63.1$\pm$4.2} & \underline{74.8$\pm$1.4} & 52.76 & 58.3$\pm$0.6 & 86.5$\pm$1.5 & \textbf{80.96} & 38.1$\pm$0.6 & 73.4$\pm$6.7 & 18.86 & 42.2$\pm$4.0 & 68.1$\pm$2.9 & 55.33 & 48.7$\pm$1.4 \\
+    FedSM   & 77.2$\pm$7.2 & 37.32 & 58.8$\pm$1.3 & 59.1$\pm$4.5 & 21.79 & 56.4$\pm$1.4 & 69.8$\pm$0.8 & 67.65 & 35.0$\pm$0.5 & 67.7$\pm$3.6 & \textbf{53.91} & 42.9$\pm$2.4 & 68.9$\pm$2.5 & 48.14 & 51.2$\pm$0.7 \\
+    FedALA  & 84.4$\pm$4.0 & 83.30 & \underline{62.0$\pm$7.0} & 71.7$\pm$5.7 & 56.47 & 57.1$\pm$2.2 & \textbf{88.2$\pm$0.1} & 80.49 & 37.4$\pm$0.2 & 66.7$\pm$5.9 & 34.97 & 41.2$\pm$2.3 & 67.8$\pm$1.9 & \underline{55.58} & 50.8$\pm$1.3 \\
+    \midrule
+    FedDualAtt (8G:0L) & 80.68$\pm$2.20 & 71.71 & 57.27$\pm$0.97 & 56.67$\pm$2.09 & 36.71 & 56.46$\pm$2.61 & 78.11$\pm$1.15 & 69.83 & 39.67$\pm$0.97 & 68.26$\pm$1.51 & 48.24 & 42.59$\pm$1.89 & \textbf{72.68$\pm$1.12} & \textbf{61.23} & \textbf{54.81$\pm$1.91} \\
+    FedDualAtt (7G:1L) & \underline{87.50$\pm$0.23} & 82.58 & 59.43$\pm$0.58 & 72.28$\pm$0.68 & 53.74 & 59.61$\pm$0.91 & \underline{86.78$\pm$0.60} & 80.36 & 40.19$\pm$0.45 & 73.55$\pm$0.91 & 52.63 & 43.57$\pm$0.54 & 63.43$\pm$3.01 & 48.77 & 45.98$\pm$0.44 \\
+    FedDualAtt (6G:2L) & 86.96$\pm$1.15 & 82.40 & 56.58$\pm$3.84 & 70.06$\pm$4.11 & 50.93 & 57.69$\pm$4.70 & 85.65$\pm$2.55 & 79.18 & 38.43$\pm$2.23 & 70.72$\pm$3.41 & 48.48 & 40.72$\pm$2.55 & 57.52$\pm$2.78 & 42.30 & 43.80$\pm$4.06 \\
+    FedDualAtt (5G:3L) & \textbf{87.76$\pm$0.54} & \underline{83.15} & 59.15$\pm$0.64 & 73.99$\pm$1.06 & \underline{56.75} & \textbf{61.27$\pm$1.21} & 86.20$\pm$0.36 & 79.66 & \underline{40.46$\pm$0.39} & 73.20$\pm$1.69 & 51.39 & 43.06$\pm$0.96 & 61.92$\pm$4.90 & 45.67 & 48.42$\pm$2.20 \\
+    FedDualAtt (4G:4L) & 86.98$\pm$0.55 & 82.25 & 58.83$\pm$2.19 & 72.62$\pm$1.69 & 53.70 & 59.26$\pm$2.37 & 85.66$\pm$1.23 & 78.04 & 40.13$\pm$1.35 & 73.24$\pm$2.28 & 51.89 & 43.31$\pm$2.15 & 65.62$\pm$3.32 & 51.80 & 50.28$\pm$2.41 \\
+    FedDualAtt (3G:5L) & 87.41$\pm$0.56 & 82.22 & 59.72$\pm$0.88 & 73.12$\pm$1.14 & 54.14 & 60.51$\pm$1.03 & 85.74$\pm$1.10 & 78.22 & 40.45$\pm$0.45 & 73.72$\pm$1.95 & 51.88 & \textbf{43.83$\pm$1.32} & 65.05$\pm$6.22 & 50.28 & 50.98$\pm$4.19 \\
+    FedDualAtt (2G:6L) & 86.78$\pm$0.85 & 81.61 & 56.41$\pm$4.01 & 70.30$\pm$3.52 & 50.88 & 57.43$\pm$3.63 & 85.21$\pm$1.71 & 77.49 & 38.59$\pm$2.64 & 71.21$\pm$3.82 & 48.98 & 41.74$\pm$2.89 & 63.36$\pm$5.93 & 49.24 & 49.93$\pm$3.47 \\
+    FedDualAtt (1G:7L) & 86.64$\pm$0.50 & 80.97 & 59.26$\pm$0.89 & 72.20$\pm$0.47 & 52.01 & 60.15$\pm$1.13 & 85.18$\pm$0.59 & 77.48 & \textbf{40.58$\pm$0.35} & \textbf{74.29$\pm$1.00} & 52.68 & 43.36$\pm$0.44 & 66.77$\pm$5.49 & 54.36 & 51.09$\pm$1.91 \\
+    FedDualAtt (0G:8L) & 87.48$\pm$0.37 & \textbf{83.86} & 59.72$\pm$1.87 & \textbf{75.20$\pm$1.78} & \textbf{58.33} & \underline{61.11$\pm$2.63} & 86.39$\pm$1.21 & \underline{80.60} & 39.89$\pm$1.31 & \underline{74.05$\pm$3.00} & \underline{53.12} & 43.78$\pm$2.65 & 50.79$\pm$1.74 & 31.29 & 44.49$\pm$2.43 \\
+    \midrule
+    Centralized & 84.9$\pm$0.5 & 82.36 & 54.8$\pm$0.5 & 71.4$\pm$5.0 & 60.36 & 55.2$\pm$2.9 & 84.1$\pm$1.6 & 81.29 & 36.5$\pm$1.1 & 72.2$\pm$3.7 & 55.68 & 41.5$\pm$1.3 & 80.0$\pm$2.1 & 74.94 & 63.2$\pm$2.8 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+% ============================================================
+% Cross-Evaluation: source model × target dataset, all 9 head-ratio configs
+% (formatted like Client1–4 rows in the benchmark table above)
+% ============================================================
+\newpage
+\small
+\begin{longtable}{l|cc|cc|cc|cc|cc}
+  \caption{%
+    Cross-evaluation of FedDualAtt personalized models across all head-ratio configurations
+    (\%, mean$\pm$std over 5 seeds).
+    Each row uses the personalized model of the labelled source client
+    (global weights $+$ that client's local attention parameters)
+    and evaluates it on each column's test set.
+    \textbf{Bold} = diagonal entry (source $=$ target client), i.e.\ standard personalized evaluation.
+    Off-diagonal entries measure cross-site generalization.
+    8G:0L has no local heads --- all source models collapse to the same global model, so rows are identical.
+    Global = mean F1/mAP over all four target clients.
+    $^\dagger$Off-diagonal mAP may be inflated for absent ECG classes
+    (sklearn sets AP\,$=$\,1 for classes not present in the target dataset).%
+  } \label{tab:cross_eval_all} \\
+  \toprule
+  \multirow{2}{*}{Source model} &
+    \multicolumn{2}{c|}{Client1 (SPH)} &
+    \multicolumn{2}{c|}{Client2 (PTB-XL)} &
+    \multicolumn{2}{c|}{Client3 (SXPH)} &
+    \multicolumn{2}{c|}{Client4 (G12EC)} &
+    \multicolumn{2}{c}{Global} \\
+  & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ \\
+  \midrule
+  \endfirsthead
+  \multicolumn{11}{l}{\small\itshape (Table~\ref{tab:cross_eval_all} continued)} \\[2pt]
+  \toprule
+  Source model &
+    F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ & F1 & mAP$^\dagger$ \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endlastfoot
+  %
+  % ---- 8G:0L (global-only; all rows identical) ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 8G:0L --- global-only baseline (no local heads; all source rows are identical)}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{80.7$\pm$2.2} & \textbf{57.3$\pm$1.0} & 56.7$\pm$2.1 & 56.5$\pm$2.6 & 78.1$\pm$1.1 & 39.7$\pm$1.0 & 68.3$\pm$1.5 & 42.6$\pm$1.9 & 70.9$\pm$1.4 & 49.0$\pm$1.4 \\
+  Client2 (PTB-XL) & 80.7$\pm$2.2 & 57.3$\pm$1.0 & \textbf{56.7$\pm$2.1} & \textbf{56.5$\pm$2.6} & 78.1$\pm$1.1 & 39.7$\pm$1.0 & 68.3$\pm$1.5 & 42.6$\pm$1.9 & 70.9$\pm$1.4 & 49.0$\pm$1.4 \\
+  Client3 (SXPH)   & 80.7$\pm$2.2 & 57.3$\pm$1.0 & 56.7$\pm$2.1 & 56.5$\pm$2.6 & \textbf{78.1$\pm$1.1} & \textbf{39.7$\pm$1.0} & 68.3$\pm$1.5 & 42.6$\pm$1.9 & 70.9$\pm$1.4 & 49.0$\pm$1.4 \\
+  Client4 (G12EC)  & 80.7$\pm$2.2 & 57.3$\pm$1.0 & 56.7$\pm$2.1 & 56.5$\pm$2.6 & 78.1$\pm$1.1 & 39.7$\pm$1.0 & \textbf{68.3$\pm$1.5} & \textbf{42.6$\pm$1.9} & 70.9$\pm$1.4 & 49.0$\pm$1.4 \\
+  \midrule
+  %
+  % ---- 7G:1L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 7G:1L}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{87.5$\pm$0.2} & \textbf{59.4$\pm$0.6} & 59.9$\pm$0.3 & 56.4$\pm$0.9 & 67.4$\pm$0.8 & 37.9$\pm$0.7 & 60.8$\pm$1.1 & 41.6$\pm$0.9 & 68.9$\pm$0.4 & 48.8$\pm$0.6 \\
+  Client2 (PTB-XL) & 80.2$\pm$1.1 & 57.7$\pm$1.0 & \textbf{72.3$\pm$0.7} & \textbf{59.6$\pm$0.9} & 48.9$\pm$4.5 & 37.7$\pm$0.8 & 57.1$\pm$2.3 & 41.6$\pm$0.5 & 64.6$\pm$1.7 & 49.2$\pm$0.6 \\
+  Client3 (SXPH)   & 26.8$\pm$0.9 & 47.3$\pm$1.6 & 23.8$\pm$0.8 & 49.3$\pm$1.2 & \textbf{86.8$\pm$0.6} & \textbf{40.2$\pm$0.5} & 63.1$\pm$1.4 & 40.2$\pm$0.7 & 50.1$\pm$0.7 & 44.3$\pm$0.8 \\
+  Client4 (G12EC)  & 39.8$\pm$0.3 & 55.1$\pm$1.1 & 39.2$\pm$1.7 & 55.5$\pm$0.8 & 75.2$\pm$1.4 & 38.9$\pm$0.5 & \textbf{73.6$\pm$0.9} & \textbf{43.6$\pm$0.5} & 56.9$\pm$0.4 & 48.3$\pm$0.4 \\
+  \midrule
+  %
+  % ---- 6G:2L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 6G:2L}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{87.0$\pm$1.1} & \textbf{56.6$\pm$3.8} & 58.7$\pm$2.4 & 53.4$\pm$3.5 & 68.1$\pm$1.7 & 35.7$\pm$2.1 & 59.0$\pm$1.2 & 38.9$\pm$2.5 & 68.2$\pm$1.1 & 46.1$\pm$2.9 \\
+  Client2 (PTB-XL) & 79.0$\pm$2.3 & 54.3$\pm$4.3 & \textbf{70.1$\pm$4.1} & \textbf{57.7$\pm$4.7} & 50.7$\pm$4.7 & 36.3$\pm$1.9 & 55.6$\pm$1.9 & 38.9$\pm$2.7 & 63.8$\pm$1.5 & 46.8$\pm$3.3 \\
+  Client3 (SXPH)   & 27.0$\pm$0.7 & 45.8$\pm$4.4 & 22.9$\pm$2.0 & 47.4$\pm$3.9 & \textbf{85.6$\pm$2.5} & \textbf{38.4$\pm$2.2} & 61.9$\pm$2.0 & 37.8$\pm$2.8 & 49.4$\pm$1.7 & 42.4$\pm$3.2 \\
+  Client4 (G12EC)  & 37.1$\pm$2.3 & 50.9$\pm$5.5 & 35.3$\pm$3.5 & 51.6$\pm$4.2 & 75.1$\pm$1.1 & 37.5$\pm$2.4 & \textbf{70.7$\pm$3.4} & \textbf{40.7$\pm$2.5} & 54.6$\pm$2.3 & 45.2$\pm$3.6 \\
+  \midrule
+  %
+  % ---- 5G:3L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 5G:3L --- proposed default}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{87.8$\pm$0.5} & \textbf{59.1$\pm$0.6} & 60.0$\pm$1.2 & 57.0$\pm$1.6 & 68.7$\pm$1.0 & 37.9$\pm$0.7 & 60.5$\pm$1.5 & 40.7$\pm$1.0 & 69.2$\pm$0.7 & 48.7$\pm$0.8 \\
+  Client2 (PTB-XL) & 78.6$\pm$0.5 & 56.4$\pm$1.2 & \textbf{74.0$\pm$1.1} & \textbf{61.3$\pm$1.2} & 43.4$\pm$1.4 & 38.6$\pm$0.4 & 54.1$\pm$2.4 & 40.7$\pm$0.9 & 62.5$\pm$1.1 & 49.3$\pm$0.6 \\
+  Client3 (SXPH)   & 27.4$\pm$1.3 & 49.4$\pm$1.9 & 24.3$\pm$2.0 & 51.5$\pm$2.0 & \textbf{86.2$\pm$0.4} & \textbf{40.5$\pm$0.4} & 64.0$\pm$1.9 & 39.5$\pm$0.9 & 50.5$\pm$1.2 & 45.2$\pm$1.2 \\
+  Client4 (G12EC)  & 39.2$\pm$2.5 & 54.8$\pm$1.2 & 38.7$\pm$1.5 & 55.3$\pm$1.2 & 75.1$\pm$0.6 & 39.5$\pm$0.7 & \textbf{73.2$\pm$1.7} & \textbf{43.1$\pm$1.0} & 56.6$\pm$1.2 & 48.2$\pm$0.9 \\
+  \midrule
+  %
+  % ---- 4G:4L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 4G:4L}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{87.0$\pm$0.6} & \textbf{58.8$\pm$2.2} & 60.3$\pm$1.2 & 55.8$\pm$1.5 & 68.7$\pm$1.6 & 38.1$\pm$1.3 & 59.4$\pm$1.5 & 40.8$\pm$1.5 & 68.9$\pm$0.7 & 48.4$\pm$1.6 \\
+  Client2 (PTB-XL) & 79.3$\pm$0.6 & 56.2$\pm$2.1 & \textbf{72.6$\pm$1.7} & \textbf{59.3$\pm$2.4} & 50.1$\pm$5.1 & 38.7$\pm$1.3 & 56.4$\pm$1.1 & 41.3$\pm$1.7 & 64.6$\pm$1.5 & 48.9$\pm$1.8 \\
+  Client3 (SXPH)   & 30.6$\pm$2.9 & 51.1$\pm$1.5 & 26.4$\pm$2.1 & 51.6$\pm$2.8 & \textbf{85.7$\pm$1.2} & \textbf{40.1$\pm$1.4} & 64.6$\pm$1.2 & 40.6$\pm$1.4 & 51.8$\pm$1.2 & 45.9$\pm$1.5 \\
+  Client4 (G12EC)  & 39.4$\pm$0.7 & 54.9$\pm$1.4 & 37.8$\pm$2.4 & 55.7$\pm$1.8 & 75.9$\pm$0.6 & 39.2$\pm$1.5 & \textbf{73.2$\pm$2.3} & \textbf{43.3$\pm$2.1} & 56.6$\pm$1.2 & 48.3$\pm$1.7 \\
+  \midrule
+  %
+  % ---- 3G:5L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 3G:5L}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{87.4$\pm$0.6} & \textbf{59.7$\pm$0.9} & 60.7$\pm$1.4 & 57.2$\pm$1.2 & 68.7$\pm$0.9 & 38.1$\pm$0.5 & 60.9$\pm$1.6 & 41.9$\pm$1.4 & 69.4$\pm$0.9 & 49.2$\pm$0.8 \\
+  Client2 (PTB-XL) & 79.5$\pm$1.2 & 57.4$\pm$0.9 & \textbf{73.1$\pm$1.1} & \textbf{60.5$\pm$1.0} & 49.2$\pm$7.3 & 38.7$\pm$0.6 & 57.0$\pm$4.5 & 42.0$\pm$1.7 & 64.7$\pm$3.2 & 49.6$\pm$0.9 \\
+  Client3 (SXPH)   & 29.8$\pm$3.2 & 52.1$\pm$2.9 & 26.6$\pm$3.8 & 52.6$\pm$3.3 & \textbf{85.7$\pm$1.1} & \textbf{40.5$\pm$0.4} & 65.4$\pm$2.3 & 41.2$\pm$1.8 & 51.9$\pm$2.0 & 46.6$\pm$2.0 \\
+  Client4 (G12EC)  & 39.1$\pm$1.2 & 56.5$\pm$1.2 & 38.9$\pm$1.7 & 56.4$\pm$1.5 & 75.1$\pm$1.2 & 39.3$\pm$0.6 & \textbf{73.7$\pm$1.9} & \textbf{43.8$\pm$1.3} & 56.7$\pm$1.2 & 49.0$\pm$0.8 \\
+  \midrule
+  %
+  % ---- 2G:6L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 2G:6L}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{86.8$\pm$0.9} & \textbf{56.4$\pm$4.0} & 57.7$\pm$1.3 & 54.3$\pm$3.0 & 70.1$\pm$0.9 & 36.8$\pm$2.2 & 59.4$\pm$2.1 & 40.0$\pm$2.5 & 68.5$\pm$1.2 & 46.9$\pm$2.9 \\
+  Client2 (PTB-XL) & 78.2$\pm$1.6 & 53.9$\pm$4.2 & \textbf{70.3$\pm$3.5} & \textbf{57.4$\pm$3.6} & 50.4$\pm$6.8 & 37.0$\pm$2.4 & 55.4$\pm$3.3 & 40.1$\pm$2.4 & 63.6$\pm$2.3 & 47.1$\pm$3.1 \\
+  Client3 (SXPH)   & 30.0$\pm$1.2 & 51.3$\pm$2.6 & 25.1$\pm$1.5 & 51.5$\pm$1.7 & \textbf{85.2$\pm$1.7} & \textbf{38.6$\pm$2.6} & 63.3$\pm$1.8 & 39.8$\pm$2.6 & 50.9$\pm$1.0 & 45.3$\pm$2.3 \\
+  Client4 (G12EC)  & 38.5$\pm$1.6 & 53.7$\pm$4.8 & 35.9$\pm$2.7 & 53.4$\pm$3.3 & 76.2$\pm$0.8 & 37.7$\pm$2.7 & \textbf{71.2$\pm$3.8} & \textbf{41.7$\pm$2.9} & 55.5$\pm$2.1 & 46.6$\pm$3.4 \\
+  \midrule
+  %
+  % ---- 1G:7L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 1G:7L}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{86.6$\pm$0.5} & \textbf{59.3$\pm$0.9} & 60.3$\pm$1.0 & 56.8$\pm$0.5 & 68.5$\pm$1.1 & 39.1$\pm$0.6 & 59.8$\pm$1.3 & 42.1$\pm$0.5 & 68.8$\pm$0.5 & 49.3$\pm$0.3 \\
+  Client2 (PTB-XL) & 80.1$\pm$1.1 & 57.0$\pm$0.5 & \textbf{72.2$\pm$0.5} & \textbf{60.2$\pm$1.1} & 55.1$\pm$4.4 & 39.1$\pm$0.7 & 58.6$\pm$2.1 & 42.2$\pm$0.6 & 66.5$\pm$1.7 & 49.6$\pm$0.3 \\
+  Client3 (SXPH)   & 31.1$\pm$1.9 & 52.5$\pm$1.2 & 27.0$\pm$1.0 & 54.0$\pm$0.8 & \textbf{85.2$\pm$0.6} & \textbf{40.6$\pm$0.4} & 65.5$\pm$0.6 & 41.7$\pm$0.9 & 52.2$\pm$0.7 & 47.2$\pm$0.5 \\
+  Client4 (G12EC)  & 38.6$\pm$1.4 & 55.4$\pm$0.5 & 38.4$\pm$1.0 & 56.3$\pm$1.0 & 76.5$\pm$1.5 & 39.7$\pm$0.6 & \textbf{74.3$\pm$1.0} & \textbf{43.4$\pm$0.4} & 57.0$\pm$0.7 & 48.7$\pm$0.3 \\
+  \midrule
+  %
+  % ---- 0G:8L ----
+  \multicolumn{11}{l}{\textit{FedDualAtt 0G:8L --- fully local (no global attention heads)}} \\
+  \midrule
+  Client1 (SPH)    & \textbf{87.5$\pm$0.4} & \textbf{59.7$\pm$1.9} & 58.0$\pm$1.0 & 53.8$\pm$2.7 & 64.6$\pm$1.7 & 35.4$\pm$1.0 & 56.1$\pm$1.4 & 41.0$\pm$2.3 & 66.5$\pm$0.8 & 47.5$\pm$1.9 \\
+  Client2 (PTB-XL) & 76.8$\pm$1.0 & 56.2$\pm$1.9 & \textbf{75.2$\pm$1.8} & \textbf{61.1$\pm$2.6} & 36.4$\pm$2.1 & 36.6$\pm$1.2 & 50.4$\pm$2.3 & 40.4$\pm$2.0 & 59.7$\pm$1.5 & 48.6$\pm$1.8 \\
+  Client3 (SXPH)   & 26.3$\pm$0.8 & 45.0$\pm$1.4 & 22.3$\pm$1.8 & 44.7$\pm$2.0 & \textbf{86.4$\pm$1.2} & \textbf{39.9$\pm$1.3} & 62.2$\pm$1.9 & 39.3$\pm$2.0 & 49.3$\pm$0.9 & 42.2$\pm$1.6 \\
+  Client4 (G12EC)  & 38.0$\pm$0.6 & 53.3$\pm$1.6 & 36.0$\pm$1.5 & 52.7$\pm$2.3 & 74.2$\pm$0.7 & 38.0$\pm$1.1 & \textbf{74.1$\pm$3.0} & \textbf{43.8$\pm$2.7} & 55.6$\pm$1.2 & 47.0$\pm$1.9 \\
+\end{longtable}
+\normalsize
+
+\end{document}
