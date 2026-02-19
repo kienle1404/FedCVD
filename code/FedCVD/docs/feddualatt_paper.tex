@@ -56,124 +56,162 @@ Federated learning, personalization, attention mechanism, ECG classification, tr
 
 \subsection{Problem Formulation}
 
-We consider a federated learning scenario with $K$ medical institutions (clients), where each client $k \in \{1, \ldots, K\}$ holds a local dataset $\mathcal{D}_k = \{(x_i^k, y_i^k)\}_{i=1}^{n_k}$ of ECG recordings and corresponding diagnostic labels. Due to privacy regulations, raw data cannot be shared across institutions. The goal is to collaboratively train models that achieve strong performance on each client's local test distribution while leveraging knowledge from other clients.
-
-A key challenge in this setting is \textbf{data heterogeneity}: different hospitals exhibit distinct patient demographics, recording equipment, and labeling practices, leading to non-IID data distributions across clients. Standard FL approaches like FedAvg aggregate all model parameters, which can harm performance when client distributions differ significantly. Conversely, purely local training fails to benefit from cross-institutional knowledge.
-
-We propose a middle ground: \textbf{architectural personalization} through dual attention heads, where some model components are shared globally while others remain personalized to each client.
-
-\subsection{Dual Attention Transformer Block}
-
-Our key contribution is the \textbf{Dual Attention Transformer Block}, which splits the multi-head attention mechanism into two parallel branches with distinct roles in federated learning.
-
-\subsubsection{Global Attention Branch ($H_g$ heads)}
-The global branch captures \textbf{shared ECG patterns} common across all institutions, such as fundamental arrhythmia morphologies and rhythm characteristics. Its parameters are aggregated via FedAvg, allowing the model to benefit from collective knowledge. This branch learns representations that generalize well across different data distributions.
-
-\subsubsection{Local Attention Branch ($H_l$ heads)}
-The local branch captures \textbf{institution-specific patterns} that vary across clients, such as recording equipment artifacts, local patient demographics, and site-specific labeling practices. Its parameters remain personalized to each client without aggregation, enabling adaptation to each hospital's unique data characteristics.
-
-\subsubsection{Architecture Details}
-
-Given an input sequence $\mathbf{X} \in \mathbb{R}^{L \times d}$ where $L$ is the sequence length and $d = 512$ is the model dimension, each branch processes the input through three stages:
-
-\textbf{1. Input Projection}: Each attention head operates with a fixed dimension $d_h = 64$:
-\begin{equation}
-\mathbf{X}_g = \mathbf{X} \mathbf{W}_{in}^g \in \mathbb{R}^{L \times (H_g \cdot d_h)}
-\end{equation}
-\begin{equation}
-\mathbf{X}_l = \mathbf{X} \mathbf{W}_{in}^l \in \mathbb{R}^{L \times (H_l \cdot d_h)}
-\end{equation}
-
-\textbf{2. Multi-Head Attention}: Standard scaled dot-product attention is applied within each branch:
-\begin{equation}
-\mathbf{A}_g = \text{softmax}\left(\frac{\mathbf{Q}_g \mathbf{K}_g^T}{\sqrt{d_h}}\right) \mathbf{V}_g
-\end{equation}
-\begin{equation}
-\mathbf{A}_l = \text{softmax}\left(\frac{\mathbf{Q}_l \mathbf{K}_l^T}{\sqrt{d_h}}\right) \mathbf{V}_l
-\end{equation}
-
-\textbf{3. Output Projection}: Attention outputs are projected back to the model dimension:
-\begin{equation}
-\mathbf{G} = \mathbf{A}_g \mathbf{W}_{out}^g \in \mathbb{R}^{L \times d}
-\end{equation}
-\begin{equation}
-\mathbf{L} = \mathbf{A}_l \mathbf{W}_{out}^l \in \mathbb{R}^{L \times d}
-\end{equation}
-
-\subsubsection{Branch Combination}
-
-The outputs from both branches are combined through concatenation and linear projection:
-\begin{equation}
-\mathbf{O} = [\mathbf{G}; \mathbf{L}] \mathbf{W}_c
-\end{equation}
-where $[\cdot; \cdot]$ denotes concatenation along the feature dimension, and $\mathbf{W}_c \in \mathbb{R}^{2d \times d}$ projects back to dimension $d$.
-
-\textbf{Residual connections and layer normalization} follow the Pre-LN style:
-\begin{equation}
-\mathbf{X}' = \text{LayerNorm}(\mathbf{X} + \mathbf{O})
-\end{equation}
-\begin{equation}
-\mathbf{Y} = \text{LayerNorm}(\mathbf{X}' + \text{FFN}(\mathbf{X}'))
-\end{equation}
-where FFN is a two-layer feed-forward network with ReLU activation and hidden dimension 2048.
-
-\subsubsection{Head Ratio Configuration}
-
-The total number of heads is fixed at $H = H_g + H_l = 8$. The ratio between global and local heads controls the balance between shared learning and personalization:
-\begin{itemize}
-    \item \textbf{More global heads} (e.g., 6-2): Emphasizes cross-client knowledge sharing
-    \item \textbf{More local heads} (e.g., 2-6): Emphasizes client-specific adaptation
-    \item \textbf{Balanced} (4-4): Equal capacity for shared and personalized features
-\end{itemize}
-
-This architectural design enables explicit control over the personalization-generalization trade-off at the attention mechanism level.
-
-\subsection{Federated Training Protocol}
-
-Our training protocol extends FedAvg to handle dual parameter sets.
-
-\textbf{Server maintains:}
-\begin{itemize}
-    \item Global parameters $\theta^g$: ResNet backbone, global attention branch (projection layers + attention), FFN, classification head
-    \item Per-client local parameters $\{\theta^l_k\}_{k=1}^K$: Local attention branch (projection layers + attention)
-\end{itemize}
-
-\textbf{Communication Round $t$:}
-
-\begin{enumerate}
-    \item \textbf{Server $\rightarrow$ Client $k$}: Send $(\theta^g_t, \theta^l_{k,t})$
-
-    \item \textbf{Local Training}: Client $k$ performs $E$ epochs of SGD on $\mathcal{D}_k$:
-    \begin{equation}
-    \theta^g_{k,t+1}, \theta^l_{k,t+1} = \text{SGD}(\theta^g_t, \theta^l_{k,t}; \mathcal{D}_k)
-    \end{equation}
-
-    \item \textbf{Client $k$ $\rightarrow$ Server}: Upload $(\theta^g_{k,t+1}, \theta^l_{k,t+1}, n_k)$
-
-    \item \textbf{Server Aggregation}:
-    \begin{itemize}
-        \item Global parameters: $\theta^g_{t+1} = \sum_{k=1}^K \frac{n_k}{n} \theta^g_{k,t+1}$ (FedAvg)
-        \item Local parameters: $\theta^l_{k,t+1}$ stored directly (no aggregation)
-    \end{itemize}
-\end{enumerate}
-
-This protocol ensures that global attention heads converge to shared representations while local heads specialize to each client's data distribution.
+We consider a cross-silo federated learning setting with $K{=}4$ hospitals, each holding a
+private local dataset $\mathcal{D}_k = \{(x_i^k, y_i^k)\}_{i=1}^{n_k}$ of 12-lead ECG
+recordings paired with 20-class multi-label diagnostic targets.
+No raw data is shared; clients collaborate over $T$ communication rounds to improve local
+model quality.
+The key challenge is \emph{data heterogeneity}: the four sites (SPH, PTB-XL, SXPH, G12EC
+from the FedCVD benchmark~\cite{fedcvd}) differ in patient demographics, recording hardware,
+and label prevalences, yielding strongly non-IID distributions $P_k(x,y)$.
+Standard FedAvg~\cite{fedavg} aggregates all parameters uniformly, which suppresses
+site-specific signal; purely local training foregoes cross-site knowledge.
+We propose a middle path: \textbf{architectural personalization} that partitions the
+model's attention mechanism into shared and private components at design time.
 
 \subsection{Model Architecture}
 
-We integrate the dual attention mechanism into a hybrid CNN-Transformer architecture for ECG classification:
+\subsubsection{Overview}
+
+Building on the ResNet1D-34 baseline established by FedCVD~\cite{fedcvd}, we augment the
+backbone with a two-block Dual Attention Transformer:
+%
+\begin{equation}
+  (B,12,5000)
+    \xrightarrow{\text{ResNet1D-34}}
+  (B,512,L')
+    \xrightarrow{\text{PE}}
+    \xrightarrow{\times 2\,\text{DualAtt}}
+    \xrightarrow{\text{AvgPool+FC+}\sigma}
+  (B,20)
+  \label{eq:overview}
+\end{equation}
+%
+where $L'\!\approx\!156$ is the temporal sequence length after downsampling, PE denotes
+sinusoidal positional encoding~\cite{transformer}, and the output is a 20-dimensional
+sigmoid probability vector for multi-label classification.
+The ResNet1D-34 uses Conv1d layers with kernel size 7 and residual blocks of depths
+[3,\,4,\,6,\,3] producing 512-channel features.
+All components except the local attention branch (defined below) are treated as
+\textbf{global parameters} $\theta^g$ and aggregated via FedAvg each round.
+
+\subsubsection{Dual Attention Transformer Block}
+
+Each of the two stacked blocks receives an input sequence
+$\mathbf{X} \!\in\! \mathbb{R}^{L' \times d}$ ($d{=}512$) and processes it through
+\emph{two independent parallel attention branches} with a shared feed-forward network (FFN).
+Every attention head operates in a fixed $d_h{=}64$-dimensional subspace, so $H_g$
+global heads span $\mathbb{R}^{H_g d_h}$ and $H_l$ local heads span
+$\mathbb{R}^{H_l d_h}$, with $H_g + H_l = H = 8$ total heads.
+
+\textbf{Global branch} (parameters $\mathbf{W}^g_{in}, \mathbf{W}^g_{att}, \mathbf{W}^g_{out}$; aggregated via FedAvg):
+\begin{align}
+  \mathbf{G} &= \mathrm{MHA}\!\left(\mathbf{X}\mathbf{W}^g_{in},\, H_g\right)\mathbf{W}^g_{out}
+  \in \mathbb{R}^{L' \times d} \label{eq:global_branch}\\
+  \hat{\mathbf{X}}_g &= \mathrm{LN}_1\!\left(\mathbf{X} + \mathbf{G}\right) \label{eq:global_ln}
+\end{align}
+
+\textbf{Local branch} (parameters $\mathbf{W}^l_{in}, \mathbf{W}^l_{att}, \mathbf{W}^l_{out}$; stored per-client, \emph{never} aggregated):
+\begin{align}
+  \mathbf{L} &= \mathrm{MHA}\!\left(\mathbf{X}\mathbf{W}^l_{in},\, H_l\right)\mathbf{W}^l_{out}
+  \in \mathbb{R}^{L' \times d} \label{eq:local_branch}\\
+  \hat{\mathbf{X}}_l &= \mathrm{LN}_2\!\left(\mathbf{X} + \mathbf{L}\right) \label{eq:local_ln}
+\end{align}
+
+\textbf{Branch fusion and FFN} (global parameters):
+\begin{align}
+  \mathbf{O} &= \left[\hat{\mathbf{X}}_g\,;\,\hat{\mathbf{X}}_l\right]\mathbf{W}_c
+  \in \mathbb{R}^{L' \times d},\quad \mathbf{W}_c \in \mathbb{R}^{2d \times d}
+  \label{eq:combine}\\
+  \mathbf{Y} &= \mathrm{LN}_3\!\left(\mathbf{O} + \mathrm{FFN}(\mathbf{O})\right)
+  \label{eq:ffn}
+\end{align}
+%
+where $[\,;\,]$ concatenates along the feature dimension and FFN is a two-layer
+MLP with hidden dimension 2048 and ReLU activation.
+When only one branch is active (ablation extremes $H_g{=}0$ or $H_l{=}0$), the
+combine layer is removed and the single-branch output feeds the FFN directly.
+
+\subsubsection{Parameter Classification}
+\label{sec:param_class}
+
+Parameters are classified at the \emph{layer-name} level: any weight whose name
+contains \texttt{local\_att} or \texttt{local\_proj} belongs to the
+\textbf{local} set $\phi_k$ (the projection matrices and multi-head attention weights
+of the local branch in both transformer blocks).
+All remaining parameters — the ResNet backbone, positional encoding buffer,
+global branch weights $\{\mathbf{W}^g_{in},\mathbf{W}^g_{att},\mathbf{W}^g_{out}\}$,
+combine weight $\mathbf{W}_c$, FFN, three LayerNorms, and the classifier FC layer —
+form the \textbf{global} set $\theta^g$.
+
+\subsection{Federated Training Protocol}
+
+\subsubsection{Server State Invariant}
+
+The server maintains two disjoint stores: (i) a model $\theta^g$ whose local positions
+are always \emph{zeroed} (the server-model invariant), and (ii) a list of per-client
+local parameter dictionaries $\{\phi_k\}_{k=1}^K$ initialized from the model's
+random weights and updated each round.
+Keeping local positions at zero in the server model ensures that the serialized
+broadcast is always a clean global state with no cross-client contamination.
+
+\subsubsection{Communication Round $t$}
 
 \begin{enumerate}
-    \item \textbf{Feature Extraction}: ResNet1D-34 backbone processes raw 12-lead ECG signals ($\mathbb{R}^{12 \times 5000}$) to extract feature maps ($\mathbb{R}^{512 \times L'}$).
 
-    \item \textbf{Positional Encoding}: Learnable positional embeddings are added to preserve temporal information.
+\item \textbf{Downlink.}
+Server sends $\bigl(\theta^g_t,\;\phi_{k,t}\bigr)$ to client $k$.
+($\theta^g_t$ carries zeroed local positions.)
 
-    \item \textbf{Dual Attention Blocks}: Two stacked dual attention transformer blocks with $H_g + H_l = 8$ total heads process the features.
+\item \textbf{Client setup.}
+Client loads $\theta^g_t$ into its model, then overlays the local branch with
+$\phi_{k,t}$ via a partial state-dict update (\texttt{load\_state\_dict(strict=False)}),
+recovering the full personalized model $(\theta^g_t, \phi_{k,t})$.
 
-    \item \textbf{Classification Head}: Global average pooling followed by a fully-connected layer produces multi-label predictions.
+\item \textbf{Local training.}
+Joint SGD for $E$ epochs over $\mathcal{D}_k$ with binary cross-entropy loss,
+updating both $\theta^g$ and $\phi_k$ simultaneously:
+\begin{equation}
+  \bigl(\theta^g_{k,t+1},\;\phi_{k,t+1}\bigr)
+  = \mathrm{SGD}\!\left(\theta^g_t,\;\phi_{k,t};\;\mathcal{D}_k,\;E\right).
+  \label{eq:local_sgd}
+\end{equation}
+
+\item \textbf{Uplink.}
+Client extracts updated local weights $\phi_{k,t+1}$, then zeros local positions
+in the model and serializes the result as $\tilde{\theta}^g_{k,t+1}$ (local\,=\,0),
+before uploading $\bigl(\tilde{\theta}^g_{k,t+1},\;\phi_{k,t+1},\;n_k\bigr)$.
+
 \end{enumerate}
 
-All components except local attention branches (local projection layers and local multi-head attention) are designated as global parameters and aggregated across clients.
+\subsubsection{Server Aggregation}
+
+Global parameters are updated by weighted averaging:
+\begin{equation}
+  \theta^g_{t+1} = \sum_{k=1}^{K} \frac{n_k}{n}\,\tilde{\theta}^g_{k,t+1},
+  \qquad n = \textstyle\sum_k n_k.
+  \label{eq:fedavg}
+\end{equation}
+Because local positions in every upload are exactly zero, their weighted average is
+also zero, so the server-model invariant is \emph{automatically preserved} by FedAvg
+with no additional zeroing step.
+Local parameters are stored directly without aggregation:
+\begin{equation}
+  \phi_{k,t+1} \leftarrow \phi_{k,t+1}, \quad \forall\, k \in \{1,\ldots,K\}.
+  \label{eq:local_store}
+\end{equation}
+
+\subsubsection{Head Ratio as a Design Parameter}
+
+The integer $H_g \in \{0,1,\ldots,8\}$ fully determines the split.
+We sweep all nine configurations (8G:0L through 0G:8L) as an ablation.
+The two degenerate cases serve as baselines:
+$H_g{=}8$ ($\phi_k {=} \emptyset$) reduces FedDualAtt to FedAvg over a
+ResNet-Transformer hybrid, isolating the architectural contribution;
+$H_g{=}0$ ($\theta^g$ excludes attention entirely) removes all cross-client
+attention sharing, yielding purely local attention.
+We select $H_g{=}5$, $H_l{=}3$ (5G:3L) as the recommended configuration
+based on the ablation analysis in Section~\ref{sec:ablation}.
 
 %==============================================================================
 \section{Experiments}
@@ -196,6 +234,11 @@ All components except local attention branches (local projection layers and loca
 
 \bibliographystyle{IEEEtran}
 \begin{thebibliography}{10}
+
+\bibitem{fedcvd}
+Y.~Zhang, Y.~Jiang, J.~Feng, and B.~Zheng,
+``FedCVD: The first real-world federated learning benchmark on cardiovascular disease data,''
+in \emph{Proc. FL@FM-NeurIPS Workshop}, 2023.
 
 \bibitem{fedavg}
 B.~McMahan, E.~Moore, D.~Ramage, S.~Hampson, and B.~A.~y~Arcas,
