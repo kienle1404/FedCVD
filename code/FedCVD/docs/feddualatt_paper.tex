@@ -148,24 +148,24 @@ Intuitively, the global branch learns which ECG time steps are mutually relevant
 Global average pooling reduces the sequence dimension of $\mathbf{Y}$, and a fully-connected layer with sigmoid activation produces 20-class multi-label predictions trained with binary cross-entropy loss (BCELoss).
 
 \subsection{Federated Training Protocol}
-The server maintains two sets of parameters: (1) global parameters $\theta^g$ (global attention heads, combine layer, FFN, and classification head) and (2) per-client local parameters $\{\phi_k\}_{k=1}^K$ (each client's local attention heads), stored separately without aggregation.
+The server maintains global parameters $\theta^g$ (global attention heads, combine layer, FFN, and classification head). Each client $k$ independently stores its own local parameters $\phi_k$ (local attention heads) without sharing them with the server or other clients.
 Algorithm~\ref{alg:feddualatt} describes one communication round of the protocol.
 Since $\phi_k$ is never aggregated, each client's local attention heads adapt exclusively to its own data distribution while the shared $\theta^g$ benefits from all clients via FedAvg.
 \begin{algorithm}[t]
 \caption{FedDualAtt: Communication Round $t$}
 \label{alg:feddualatt}
 \begin{algorithmic}[1]
-\REQUIRE global params $\theta^g_t$, per-client params $\{\phi_{k,t}\}_{k=1}^K$, epochs $E$
-\ENSURE updated $\theta^g_{t+1}$, updated $\{\phi_{k,t+1}\}_{k=1}^K$
+\REQUIRE Server: $\theta^g_t$; Client $k$: $\phi_{k,t}$, $D_k$, epochs $E$
+\ENSURE Server: updated $\theta^g_{t+1}$; Client $k$: updated $\phi_{k,t+1}$
 \FOR{each client $k = 1, \ldots, K$ \textbf{in parallel}}
-    \STATE \textbf{Downlink}: receive $(\theta^g_t, \phi_{k,t})$ from server
+    \STATE \textbf{Downlink}: receive $\theta^g_t$ from server
     \STATE Initialize model: load $\theta^g_t$ for global params, $\phi_{k,t}$ for local attention
     \STATE \textbf{Training}: run SGD for $E$ epochs on $D_k$, updating all params jointly
-    \STATE \textbf{Uplink}: send $(\theta^g_{k,t+1},\; \phi_{k,t+1},\; n_k)$ to server
+    \STATE \textbf{Uplink}: send $(\theta^g_{k,t+1},\; n_k)$ to server
+    \STATE Retain $\phi_{k,t+1}$ in local storage
 \ENDFOR
 \STATE \textbf{Aggregation}: $\theta^g_{t+1} \leftarrow \sum_{k=1}^K \frac{n_k}{n}\,\theta^g_{k,t+1}$, \quad $n = \sum_{k=1}^K n_k$
-\STATE Store $\phi_{k,t+1}$ per-client for each $k$ without aggregation
-\RETURN $\theta^g_{t+1}$, $\{\phi_{k,t+1}\}_{k=1}^K$
+\RETURN $\theta^g_{t+1}$
 \end{algorithmic}
 \end{algorithm}
 
