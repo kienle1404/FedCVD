@@ -62,26 +62,81 @@ U-shaped performance curve: extreme and clear splits are stable; middle-ground s
 Results files: `head_ratio_all_metrics.csv`, `head_ratio_results_summary.csv`, `baseline_comparison.csv`, `reevaluation_results.csv`
 Experiment scripts: `scripts/ecg/run_head_ratio.py`, `scripts/ecg/run_head_count_experiment.py`
 
-## Next Experiment: Head Count Scaling (Planned, Not Yet Executed)
+## Next Experiment: Head Count Scaling — Implementation Plan
 
-**Goal:** Test whether scaling total heads breaks the global/local zero-sum trade-off. At 8 heads, more local = less global capacity. At higher head counts, both branches can have sufficient capacity.
+### Goal
+Test whether scaling total heads breaks the global/local zero-sum trade-off. At 8 heads, more local = less global capacity. At higher head counts, both branches can have sufficient capacity. The hypothesis is that balanced ratios can achieve good global AND per-client performance simultaneously when neither branch is capacity-starved.
 
-**Design decisions made:**
-1. Sweep global/local ratio at multiple total head counts, plot on the same axes (x = % global, y = Micro-F1) with one line per head count
-2. Use 10% ratio steps (0%, 10%, 20%, ..., 100% global) for smooth curves and clean paper presentation
-3. Head counts must be divisible by 10 for clean 10% steps → candidates: 10, 20, 30
-4. d_model=512 is inherited from ResNet1D-34 backbone (layer4 output channels), not a free parameter
-5. Higher head counts (e.g., 30 heads, 1920 att dim) are structurally similar to the FFN expand-then-compress (512→2048→512), so projection isn't a fundamental concern
-6. Real risks of scaling: overfitting on short sequences (~156 timesteps), compute cost, optimization difficulty in limited FL local epochs
+### Experiment Design
+- **Ratio sweep at 3 total head counts**: 10, 20, 30 (divisible by 10 for clean 10% steps)
+- **11 ratio points per head count**: 0%, 10%, 20%, ..., 100% global
+- **Overlay with existing 8-head data** (12.5% steps) as a 4th reference line
+- **5 seeds each**: [42, 123, 456, 789, 1024]
+- **Track both**: Global Micro-F1 and per-client Micro-F1
+- **Total new runs**: 33 configs × 5 seeds = 165
 
-**Open questions:**
-- Final head count set (10, 20, 30 is leading candidate)
-- Number of seeds per config (5 seeds × 11 ratios × 3 head counts = 165 runs)
-- Whether to run all upfront or start with a coarse sweep
+Concrete configs:
+```
+10 heads: (10,0) (9,1) (8,2) (7,3) (6,4) (5,5) (4,6) (3,7) (2,8) (1,9) (0,10)
+20 heads: (20,0) (18,2) (16,4) (14,6) (12,8) (10,10) (8,12) (6,14) (4,16) (2,18) (0,20)
+30 heads: (30,0) (27,3) (24,6) (21,9) (18,12) (15,15) (12,18) (9,21) (6,24) (3,27) (0,30)
+```
 
-**Two metrics to track:** Global Micro-F1 (aggregated performance) AND per-client Micro-F1 (personalization). The hypothesis is that at higher head counts, balanced ratios can achieve good global AND per-client performance simultaneously.
+### Design Rationale
+- d_model=512 is inherited from ResNet1D-34 backbone (layer4 output channels), not a free parameter
+- Higher head counts (e.g., 30 heads → 1920 att dim) use the same expand-then-compress pattern as FFN (512→2048→512), so projection isn't a fundamental concern
+- Real risks of scaling: overfitting on short sequences (~156 timesteps), compute cost, FL optimization difficulty
+- 10% ratio steps give smooth curves; each head is only 5% at 20 heads (vs 12.5% at 8), reducing the coarseness that may have caused instability
 
-**Future experiment ideas (not yet started):**
+### Implementation Steps
+
+**Step 1: Rewrite `scripts/ecg/run_head_count_experiment.py`**
+- Replace old `HEAD_CONFIGS` (fixed ratio, varying head count) with new design (fixed head count, varying ratio)
+- Generate configs programmatically: for each `num_heads` in [10, 20, 30], create 11 ratio points at 10% steps
+- CLI: `--num_heads 20` sweeps all ratios at 20 heads; `--all` runs all three head counts
+- Keep existing structure: subprocess calls to `trainers/feddualatt_ecg.py`, seed management, summary output
+
+**Step 2: No changes needed to model/algorithm/trainer**
+- `model/dual_attention_resnet.py` already supports arbitrary head counts via `head_dim=64` projections
+- `algorithm/ecg/feddualatt.py` parameter filtering uses name patterns (`local_att`, `local_proj`), works for any head count
+- `trainers/feddualatt_ecg.py` accepts `--num_heads` and `--global_heads` args, output path `global{G}_local{L}/seed{S}/` already differentiates all configs
+- `model/__init__.py` `get_model()` passes kwargs through to `dual_attention_resnet1d()`
+
+**Step 3: Create `scripts/ecg/extract_head_count_metrics.py`**
+- Scan `output/dual_attention_resnet1d/feddualatt/global*_local*/seed*/` directories
+- Group by total head count (global + local from directory name)
+- Compute `pct_global = global / (global + local) * 100`
+- Reuse `extract_metrics()` and `aggregate_metrics()` logic from `extract_head_ratio_metrics.py`
+- Output CSV: `total_heads, pct_global, global_heads, local_heads, global_micro_f1_mean, global_micro_f1_std, SPH_micro_f1_mean, SPH_micro_f1_std, PTB-XL_micro_f1_mean, ...`
+- Include existing 8-head data automatically (same directory structure)
+
+**Step 4: Create `scripts/ecg/plot_head_count_results.py`**
+- Line plot: x = % global (0-100), y = Micro-F1
+- 4 lines (8, 10, 20, 30 heads) with different colors, error bars or shaded std regions
+- Two figures: (1) global Micro-F1, (2) per-client Micro-F1 (4 subplots or overlaid with legend)
+- Reuse matplotlib style from `plot_head_ratio_results.py`
+- Save to `docs/figures/`
+
+**Step 5: Smoke test**
+- Quick validation: `python run_head_count_experiment.py --num_heads 10 --pct_global 50 --num_seeds 1 --communication_round 2 --data_fraction 0.1`
+- Verify: model instantiates, trains, saves metrics to correct output path
+
+**Step 6: Run full experiments (165 runs)**
+
+**Step 7: Extract results and generate plots**
+
+### Files Summary
+| Action | File | Purpose |
+|--------|------|---------|
+| Rewrite | `scripts/ecg/run_head_count_experiment.py` | Experiment runner |
+| Create | `scripts/ecg/extract_head_count_metrics.py` | Results extraction |
+| Create | `scripts/ecg/plot_head_count_results.py` | Visualization |
+| Unchanged | `model/dual_attention_resnet.py` | Already supports arbitrary heads |
+| Unchanged | `algorithm/ecg/feddualatt.py` | Name-based param filtering works |
+| Unchanged | `trainers/feddualatt_ecg.py` | Already accepts head args |
+| Unchanged | `model/__init__.py` | Already forwards kwargs |
+
+### Future Experiment Ideas (Not Yet Started)
 - Gated combination layer (learnable global/local weighting per sample)
 - Differential learning rates for global vs local parameters
 - Communication cost analysis (no training needed, just parameter counting)
