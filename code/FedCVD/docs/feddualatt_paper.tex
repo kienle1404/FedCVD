@@ -10,7 +10,36 @@
 \usepackage{breqn}
 \usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
 \usepackage{textcomp}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{amsmath,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\usepackage{array}
+\usepackage{breqn}
+\usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
+\usepackage{textcomp}
 \usepackage{cite}
+% Link/Citation/Figure/Table
+%\usepackage[hidelinks]{hyperref}
+%\usepackage[bookmarksnumbered, colorlinks, citecolor=darkblue, linkcolor=blue, plainpages]{hyperref}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks = true,
+    %linkbordercolor = {white},
+    %<your other options...>,
+    allcolors = blue
+}
+
+\usepackage{multirow}
+\usepackage{stfloats}
+\renewcommand{\arraystretch}{1.5} 
+\usepackage{url}
+\usepackage{pgfplots}
+\usepackage{verbatim}
+\usepackage{pgfplotstable}
 % Link/Citation/Figure/Table
 %\usepackage[hidelinks]{hyperref}
 %\usepackage[bookmarksnumbered, colorlinks, citecolor=darkblue, linkcolor=blue, plainpages]{hyperref}
@@ -32,7 +61,11 @@
 \usepackage{graphicx}
 \usepackage{tikz}
 \usepackage{color,soul} 
+\usepackage{tikz}
+\usepackage{color,soul} 
 \usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
@@ -40,6 +73,25 @@
 
 \title{Dual Attention Heads for Personalized Federated Learning in Multi-Center ECG Classification}\vspace{-0.2cm}
 
+\title{Dual Attention Heads for Personalized Federated Learning in Multi-Center ECG Classification}\vspace{-0.2cm}
+
+\author{\IEEEauthorblockN{Kien Le}
+\IEEEauthorblockA{\textit{Computer Science} \\
+\textit{Florida State University}\\
+Tallahassee, FL 32310, USA \\
+kl23a@fsu.edu}
+\and
+\IEEEauthorblockN{Joseph Lindley}
+\IEEEauthorblockA{\textit{Chemical \& Biomedical Engineering} \\
+\textit{Florida State University}\\
+Tallahassee, FL 32310, USA\\
+jpl24f@fsu.edu}
+\and
+\IEEEauthorblockN{Quoc Bao Phan and Tuy Tan Nguyen*}
+\IEEEauthorblockA{\textit{Electrical \& Computer Engineering} \\
+\textit{Florida State University}\\
+Tallahassee, FL 32310, USA \\
+qp25c@fsu.edu, tuy.nguyen@fsu.edu}
 \author{\IEEEauthorblockN{Kien Le}
 \IEEEauthorblockA{\textit{Computer Science} \\
 \textit{Florida State University}\\
@@ -61,14 +113,19 @@ qp25c@fsu.edu, tuy.nguyen@fsu.edu}
 
 
 
+
+
 \maketitle
 
 \begin{abstract}
 
 Federated learning (FL) enables collaborative model training across medical institutions without sharing sensitive patient data. However, the inherent heterogeneity of electrocardiogram (ECG) data across hospitals presents significant technical challenges for robust classification. We propose FedDualAtt, a personalized federated learning approach that splits transformer attention heads into global and local branches. Global heads are aggregated via FedAvg to capture shared cross-site patterns, while local heads remain client-specific to adapt to institution-level recording characteristics. Experiments on FedCVD, an FL benchmark for cardiovascular disease detection, demonstrate that FedDualAtt outperforms existing FL and personalized FL methods in ECG classification tasks. Analysis of global-local head ratios reveals that different clients benefit from varying levels of architectural personalization.
+
+Federated learning (FL) enables collaborative model training across medical institutions without sharing sensitive patient data. However, the inherent heterogeneity of electrocardiogram (ECG) data across hospitals presents significant technical challenges for robust classification. We propose FedDualAtt, a personalized federated learning approach that splits transformer attention heads into global and local branches. Global heads are aggregated via FedAvg to capture shared cross-site patterns, while local heads remain client-specific to adapt to institution-level recording characteristics. Experiments on FedCVD, an FL benchmark for cardiovascular disease detection, demonstrate that FedDualAtt outperforms existing FL and personalized FL methods in ECG classification tasks. Analysis of global-local head ratios reveals that different clients benefit from varying levels of architectural personalization.
 \end{abstract}
 
 \begin{IEEEkeywords}
+Federated learning, personalized federated learning, electrocardiogram, dual attention, transformer, cardiovascular disease
 Federated learning, personalized federated learning, electrocardiogram, dual attention, transformer, cardiovascular disease
 \end{IEEEkeywords}
 
@@ -102,8 +159,27 @@ The remaining sections are structured as follows: Section~\ref{section II} revie
     \label{fig:framework}
 \end{figure*}
 We consider a $K = 4$ hospital clients, each with a private dataset $D_k$ of 12-lead ECG recordings $x^k_i$ and 20-class multi-label binary targets $y^k_i$. Clients collaborate for $T = 50$ communication rounds. 
+\label{section III}
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figs/framework.png}
+    \caption{FedDualAtt framework. (a)~DualAttentionResNet1D with parallel global ($\theta^g$, FedAvg-aggregated) and local ($\phi_k$, per-client) attention branches. (b)~Federated training protocol with separate parameter stores for $\theta^g$ and $\{\phi_k\}_{k=1}^K$.}
+    \label{fig:framework}
+\end{figure*}
+We consider a $K = 4$ hospital clients, each with a private dataset $D_k$ of 12-lead ECG recordings $x^k_i$ and 20-class multi-label binary targets $y^k_i$. Clients collaborate for $T = 50$ communication rounds. 
 
 \subsection{Model Architecture}
+Fig.~\ref{fig:framework} illustrates our proposed architecture. We partition the model parameters into two sets: global parameters $\theta^g$ (aggregated across clients) and per-client local parameters $\phi_k$ (never aggregated).
+
+We integrate dual attention into a hybrid CNN-Transformer architecture, with a ResNet1D-34 that extracts features from 12-lead ECG signals, followed by two stacked dual attention transformer blocks, and a classification head for multi-label prediction.
+
+\textbf{ResNet1D-34 feature extractor:}
+We adopt the ResNet1D-34 convolutional feature extractor from FedCVD without modification, ensuring direct comparability with all baseline methods. It maps each input $x_i^k \in \mathbb{R}^{12 \times L}$ to a feature sequence $\mathbf{X} \in \mathbb{R}^{L' \times d}$ ($d=512$, $L'= 156$) via strided convolutions, pooling, and sinusoidal positional encoding.
+
+\textbf{Dual attention transformer block:}
+The core design insight is that full FedAvg destroys site-specific attention patterns, while purely local training cannot exploit cross-site data. We resolve this by splitting the $H\!=\!8$ attention heads into $H_g$ global heads and $H_l$ local heads ($H_g + H_l = H$): the global heads are aggregated via FedAvg and learn patterns transferable across institutions, while the local heads are kept per-client and adapt to each site's own distribution. Each block processes $\mathbf{X}$ through these two parallel multi-head attention (MHA) branches with layer normalization (LN) and fixed head dimension $d_h=64$. Each branch uses an input projection $\mathbf{W}_{in}$ and output projection $\mathbf{W}_{out}$ to map between model dimension $d$ and the branch's attention space.
+
+\emph{Global branch}:
 Fig.~\ref{fig:framework} illustrates our proposed architecture. We partition the model parameters into two sets: global parameters $\theta^g$ (aggregated across clients) and per-client local parameters $\phi_k$ (never aggregated).
 
 We integrate dual attention into a hybrid CNN-Transformer architecture, with a ResNet1D-34 that extracts features from 12-lead ECG signals, followed by two stacked dual attention transformer blocks, and a classification head for multi-label prediction.
@@ -121,7 +197,24 @@ The core design insight is that full FedAvg destroys site-specific attention pat
   \mathrm{MHA}\!\left(\mathbf{X}\mathbf{W}_{in}^g,\,H_g\right)
   \mathbf{W}_{out}^g\right) \;\in \mathbb{R}^{L' \times d}
   \label{eq:global_branch}
+  \hat{\mathbf{G}} =
+  \mathrm{LN}\!\left(\mathbf{X} +
+  \mathrm{MHA}\!\left(\mathbf{X}\mathbf{W}_{in}^g,\,H_g\right)
+  \mathbf{W}_{out}^g\right) \;\in \mathbb{R}^{L' \times d}
+  \label{eq:global_branch}
 \end{equation}
+
+\emph{Local branch}:
+\begin{equation}
+  \hat{\mathbf{L}} =
+  \mathrm{LN}\!\left(\mathbf{X} +
+  \mathrm{MHA}\!\left(\mathbf{X}\mathbf{W}_{in}^l,\,H_l\right)
+  \mathbf{W}_{out}^l\right) \;\in \mathbb{R}^{L' \times d}
+  \label{eq:local_branch}
+\end{equation}
+
+The branches are concatenated and projected to dimension $d$,
+then refined through a feed-forward network (FFN):
 
 \emph{Local branch}:
 \begin{equation}
@@ -141,7 +234,17 @@ then refined through a feed-forward network (FFN):
   \mathbf{Y} &=
     \mathrm{LN}\!\left(\mathbf{X}' +
     \mathrm{FFN}(\mathbf{X}')\right)
+  \mathbf{X}' &=
+    [\hat{\mathbf{G}};\hat{\mathbf{L}}]
+    \mathbf{W}_c \label{eq:combine} \\
+  \mathbf{Y} &=
+    \mathrm{LN}\!\left(\mathbf{X}' +
+    \mathrm{FFN}(\mathbf{X}')\right)
 \end{align}
+Intuitively, the global branch learns which ECG time steps are mutually relevant across all institutions, and because its parameters are FedAvg-aggregated, it is able to capture universal patterns to the entire client population. The local branch performs the same operation with institution-specific parameters $\phi_k$ by learning which temporal patterns are relevant for the patient population of the client $k$ and the recording conditions, and is never shared with other clients. The combine step fuses both representations into a single sequence, and the FFN applies a position-wise nonlinear transformation to each time step independently. The combined projection $\mathbf{W}_c$, FFN, and all three LN layers are global parameters $\theta^g$. Keeping $\mathbf{W}_c$ global ensures that global and local representations are fused in a consistent coordinate space across clients as a per-client $\mathbf{W}_c$ would allow each site to reinterpret the shared global features arbitrarily, thus undermining cross-client alignment.
+
+\textbf{Classification head:}
+Global average pooling reduces the sequence dimension of $\mathbf{Y}$, and a fully-connected layer with sigmoid activation produces 20-class multi-label predictions trained with binary cross-entropy loss (BCELoss).
 Intuitively, the global branch learns which ECG time steps are mutually relevant across all institutions, and because its parameters are FedAvg-aggregated, it is able to capture universal patterns to the entire client population. The local branch performs the same operation with institution-specific parameters $\phi_k$ by learning which temporal patterns are relevant for the patient population of the client $k$ and the recording conditions, and is never shared with other clients. The combine step fuses both representations into a single sequence, and the FFN applies a position-wise nonlinear transformation to each time step independently. The combined projection $\mathbf{W}_c$, FFN, and all three LN layers are global parameters $\theta^g$. Keeping $\mathbf{W}_c$ global ensures that global and local representations are fused in a consistent coordinate space across clients as a per-client $\mathbf{W}_c$ would allow each site to reinterpret the shared global features arbitrarily, thus undermining cross-client alignment.
 
 \textbf{Classification head:}
@@ -264,8 +367,16 @@ Our ablation reveals a monotonic trade-off between global generalization and per
 
 \section*{Acknowledgment}
 This research was supported by the National Science Foundation under CISE/OAC Grant Nos. 2348464 and 2600417, and was partially supported by the Florida State University UROP Research Mentor Materials Grant.
+\label{section V}
+In this paper, we propose FedDualAtt, which addresses data heterogeneity in federated ECG classification by splitting transformer attention heads into a globally aggregated branch and a per-client local branch.
+Experiments on the FedCVD benchmark demonstrate two complementary benefits: the dual-attention architecture alone ($8H_g\!:\!0H_l$) raises Global Micro-F1 to 72.68\%, surpassing all FL baselines, while introducing local heads consistently improves per-client performance on three of four clients with gains that plateau after a single local head.
+Our ablation reveals a monotonic trade-off between global generalization and per-client adaptation that is controlled entirely by the head ratio $H_g\!:\!H_l$, without additional objectives or training phases. These results suggest that architectural personalization at the attention level is an effective complement to algorithm-level FL methods for heterogeneous clinical data.
+
+\section*{Acknowledgment}
+This research was supported by the National Science Foundation under CISE/OAC Grant Nos. 2348464 and 2600417, and was partially supported by the Florida State University UROP Research Mentor Materials Grant.
 
 \bibliographystyle{IEEEtran}
+\bibliography{refs}
 \bibliography{refs}
 
 \end{document}
