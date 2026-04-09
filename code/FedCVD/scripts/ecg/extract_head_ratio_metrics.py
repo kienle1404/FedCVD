@@ -78,7 +78,12 @@ def find_head_ratio_runs(base_path: Path) -> dict:
             if seed_match:
                 seed = int(seed_match.group(1))
                 # Find latest timestamp directory
-                timestamp_dirs = [d for d in seed_dir.iterdir() if d.is_dir() and d.name.isdigit()]
+                timestamp_dirs = [
+                        d for d in seed_dir.iterdir()
+                        if d.is_dir() and d.name.isdigit()
+                        and ((d / "server" / "metric.json").exists()
+                             or (d / "server" / "metric_corrected.json").exists())
+                    ]
                 if timestamp_dirs:
                     latest = max(timestamp_dirs, key=lambda d: d.name)
                     runs[ratio_key][seed] = latest
