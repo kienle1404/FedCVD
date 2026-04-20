@@ -27,7 +27,8 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent.parent
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "output"
 DOCS_DIR = SCRIPT_DIR / "../../docs"
-FIGURES_DIR = DOCS_DIR / "figures"
+EXPERIMENT_DIR = DOCS_DIR / "experiments" / "phase1_decoupled"
+FIGURES_DIR = EXPERIMENT_DIR / "figures"
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from extract_head_ratio_metrics import (

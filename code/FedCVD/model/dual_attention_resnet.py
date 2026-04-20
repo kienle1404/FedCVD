@@ -175,7 +175,7 @@ class DualAttentionTransformerBlock(Module):
     for parameter filtering in the federated learning algorithm.
     """
     def __init__(self, d_model=512, num_heads=8, global_heads=4, local_heads=4,
-                 ff_dim=2048, dropout=0.1, head_dim=64):
+                 ff_dim=2048, dropout=0.1, head_dim=64, fusion_mode='concat'):
         super(DualAttentionTransformerBlock, self).__init__()
 
         # Fixed dimension per attention head (allows any head count)
@@ -183,6 +183,7 @@ class DualAttentionTransformerBlock(Module):
         self.d_model = d_model
         self.global_heads = global_heads
         self.local_heads = local_heads
+        self.fusion_mode = fusion_mode
 
         # Conditionally create global attention branch (aggregated via FedAvg in FL)
         if global_heads > 0:
@@ -216,9 +217,23 @@ class DualAttentionTransformerBlock(Module):
             self.local_att = None
             self.local_proj_out = None
 
-        # Combine layer only needed when both branches exist
+        # Fusion layer: only needed when both branches exist
         if global_heads > 0 and local_heads > 0:
-            self.combine = nn.Linear(d_model * 2, d_model)
+            if fusion_mode == 'concat':
+                self.combine = nn.Linear(d_model * 2, d_model)
+            elif fusion_mode == 'gate':
+                self.combine = None
+                self.local_gate = nn.Sequential(
+                    nn.Linear(d_model * 2, d_model),
+                    nn.Sigmoid()
+                )
+            elif fusion_mode == 'scalar':
+                self.combine = None
+                self.local_alpha = nn.Parameter(torch.tensor(0.5))
+            elif fusion_mode == 'add':
+                self.combine = None
+            else:
+                raise ValueError(f"Unknown fusion_mode: {fusion_mode}")
         else:
             self.combine = None
 
@@ -257,23 +272,31 @@ class DualAttentionTransformerBlock(Module):
 
         # Local attention branch with projection (if enabled)
         if self.local_heads > 0:
-            local_in = self.local_proj_in(x)
+            x_local_input = x.detach()  # gradient wall: local grads cannot reach backbone
+            local_in = self.local_proj_in(x_local_input)
             local_att_out, _ = self.local_att(local_in, local_in, local_in)
             local_out = self.local_proj_out(local_att_out)
-            x_local = self.norm2(x + local_out)
+            x_local = self.norm2(x_local_input + local_out)
         else:
             x_local = None
 
         # Combine branches based on configuration
         if x_global is not None and x_local is not None:
-            # Both branches: concatenate and combine
-            combined = torch.cat([x_global, x_local], dim=-1)  # (batch, seq_len, 2*d_model)
-            x_combined = self.combine(combined)  # (batch, seq_len, d_model)
+            if self.fusion_mode == 'concat':
+                combined = torch.cat([x_global, x_local], dim=-1)
+                x_combined = self.combine(combined)
+            elif self.fusion_mode == 'gate':
+                gate_input = torch.cat([x_global, x_local], dim=-1)
+                alpha = self.local_gate(gate_input)
+                x_combined = alpha * x_global + (1 - alpha) * x_local
+            elif self.fusion_mode == 'scalar':
+                alpha = torch.sigmoid(self.local_alpha)
+                x_combined = alpha * x_global + (1 - alpha) * x_local
+            elif self.fusion_mode == 'add':
+                x_combined = x_global + x_local
         elif x_global is not None:
-            # Global-only: use global output directly
             x_combined = x_global
         else:
-            # Local-only: use local output directly
             x_combined = x_local
 
         # Feed-forward with residual connection
@@ -311,7 +334,7 @@ class DualAttentionResNet1D(Module):
     """
     def __init__(self, input_channels=12, d_model=512, num_transformer_blocks=2,
                  num_heads=8, global_heads=None, ff_dim=2048, dropout=0.1,
-                 num_classes=20, task='multilabel'):
+                 num_classes=20, task='multilabel', fusion_mode='concat'):
         super(DualAttentionResNet1D, self).__init__()
 
         # Handle global_heads configuration
@@ -323,6 +346,7 @@ class DualAttentionResNet1D(Module):
         self.global_heads = global_heads
         self.local_heads = local_heads
         self.num_heads = num_heads
+        self.fusion_mode = fusion_mode
 
         # ResNet feature extractor (GLOBAL - aggregated in FL)
         self.feature_extractor = ResNet1DFeatureExtractor(input_channels)
@@ -338,7 +362,8 @@ class DualAttentionResNet1D(Module):
                 global_heads=global_heads,
                 local_heads=local_heads,
                 ff_dim=ff_dim,
-                dropout=dropout
+                dropout=dropout,
+                fusion_mode=fusion_mode
             )
             for _ in range(num_transformer_blocks)
         ])
@@ -393,7 +418,7 @@ class DualAttentionResNet1D(Module):
 
 def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_blocks=2,
                             num_heads=8, global_heads=None, ff_dim=2048, dropout=0.1,
-                            num_classes=20, task='multilabel'):
+                            num_classes=20, task='multilabel', fusion_mode='concat'):
     """
     Factory function to create a DualAttentionResNet1D model.
 
@@ -429,7 +454,8 @@ def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_bloc
         ff_dim=ff_dim,
         dropout=dropout,
         num_classes=num_classes,
-        task=task
+        task=task,
+        fusion_mode=fusion_mode
     )
 
 

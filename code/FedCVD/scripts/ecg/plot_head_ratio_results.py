@@ -17,18 +17,21 @@ from pathlib import Path
 # Paths
 SCRIPT_DIR = Path(__file__).parent.resolve()
 DOCS_DIR = SCRIPT_DIR.parent.parent / "docs"
-CSV_PATH = DOCS_DIR / "head_ratio_all_metrics.csv"
-OUTPUT_DIR = DOCS_DIR / "figures"
+EXPERIMENT_DIR = DOCS_DIR / "experiments" / "ratio_sweep"
+CSV_PATH = EXPERIMENT_DIR / "metrics.csv"
+OUTPUT_DIR = EXPERIMENT_DIR / "figures"
 
-# Style settings
+# Style settings — serif/Computer Modern to match LaTeX paper fonts
 plt.rcParams.update({
-    'font.size': 12,
-    'axes.labelsize': 14,
-    'axes.titlesize': 14,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'legend.fontsize': 10,
-    'figure.figsize': (10, 6),
+    'font.family': 'serif',
+    'mathtext.fontset': 'cm',          # Computer Modern for math symbols
+    'font.size': 18,
+    'axes.labelsize': 19,
+    'axes.titlesize': 19,
+    'xtick.labelsize': 17,
+    'ytick.labelsize': 17,
+    'legend.fontsize': 17,
+    'figure.figsize': (10, 7),
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -45,15 +48,19 @@ COLORS = {
 CLIENT_NAMES = ['SPH', 'PTB-XL', 'SXPH', 'G12EC']
 
 
-def load_data():
-    """Load the head ratio results CSV."""
+def load_data(total_heads: int = 8):
+    """Load the head ratio results CSV, filtered to configs where global+local==total_heads.
+    Sorted descending by global_heads (8G:0L → 0G:8L) so all plots share the same x-axis direction.
+    """
     df = pd.read_csv(CSV_PATH)
+    df = df[df['global_heads'] + df['local_heads'] == total_heads]
+    df = df.sort_values('global_heads', ascending=False).reset_index(drop=True)
     return df
 
 
 def plot_metric_bars(df, metric_name: str, ylabel: str, title: str, ylim: tuple = None):
     """Plot bar chart with error bars for a specific metric."""
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(12, 8))
 
     x = np.arange(len(df))
     width = 0.15
@@ -199,7 +206,7 @@ def plot_line_with_errorband(df, metric_name: str, ylabel: str, title: str, ylim
 
 def plot_global_line_with_errorbar(df, metric_name: str, ylabel: str, title: str, ylim: tuple = None):
     """Plot Global metric as line with error bars."""
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(10, 7))
 
     x = np.arange(len(df))
     mean_col = f'global_{metric_name}_mean'
@@ -242,7 +249,7 @@ def plot_global_line_with_errorbar(df, metric_name: str, ylabel: str, title: str
 
 def plot_combined_global_metrics(df):
     """Plot all global metrics (Micro-F1, Accuracy, mAP) in one figure."""
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 7))
 
     x = np.arange(len(df))
 
@@ -292,10 +299,10 @@ def plot_combined_global_metrics(df):
 
 def plot_personalization_benefit(df, metric_name: str, ylabel: str, title: str):
     """
-    Line graph showing per-client delta vs the 8G:0L (no-personalization) baseline.
+    Line graph showing per-client delta vs the 8Hg:0Hl (no-personalization) baseline.
 
     For each head ratio configuration, compute for each of the 4 clients:
-        delta_i = mean_metric(ratio, client_i) - mean_metric(8G:0L, client_i)
+        delta_i = mean_metric(ratio, client_i) - mean_metric(8Hg:0Hl, client_i)
 
     Then aggregate across clients:
         high = max(delta_i)   — best-benefiting client
@@ -309,17 +316,11 @@ def plot_personalization_benefit(df, metric_name: str, ylabel: str, title: str):
     # Locate the 8G:0L baseline row
     baseline_mask = df['ratio'] == '8-0'
     if not baseline_mask.any():
-        raise ValueError("Could not find ratio '8-0' (8G:0L) in dataframe.")
+        raise ValueError("Could not find ratio '8-0' (8Hg:0Hl) in dataframe.")
     baseline = df[baseline_mask].iloc[0]
 
-    # Sort descending by global heads so x-axis reads 8G:0L → 0G:8L
-    # (increasing personalization left to right)
-    df = df.copy()
-    df['_g'] = df['ratio'].apply(lambda r: int(r.split('-')[0]))
-    df = df.sort_values('_g', ascending=False).reset_index(drop=True)
-
-    # Format x-axis labels: "8-0" → "8G:0L"
-    x_labels = [f"{r.split('-')[0]}G:{r.split('-')[1]}L" for r in df['ratio']]
+    # Format x-axis labels: "8-0" → "8Hg:0Hl"  (df already sorted 8G:0L → 0G:8L by load_data)
+    x_labels = [f"${r.split('-')[0]}H_g$:${r.split('-')[1]}H_l$" for r in df['ratio']]
     x = np.arange(len(df))
 
     highs, means, lows = [], [], []
@@ -338,9 +339,9 @@ def plot_personalization_benefit(df, metric_name: str, ylabel: str, title: str):
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Reference line at zero (= 8G:0L performance)
+    # Reference line at zero (= 8Hg:0Hl performance)
     ax.axhline(0, color='#555555', linewidth=1.2, linestyle='--', alpha=0.7,
-               label='8G:0L baseline (Δ = 0)')
+               label=r'$8H_g$:$0H_l$ baseline ($\Delta = 0$)')
 
     # Shaded band between high and low
     ax.fill_between(x, lows, highs, alpha=0.12, color='#1f77b4')
@@ -361,7 +362,7 @@ def plot_personalization_benefit(df, metric_name: str, ylabel: str, title: str):
     ax.set_ylim(min(data_min, 0) - margin, max(data_max, 0) + margin)
 
     ax.set_xlabel('Head Ratio (Global : Local)', fontsize=13)
-    ax.set_ylabel(f'Δ {ylabel} vs 8G:0L', fontsize=13)
+    ax.set_ylabel(f'$\\Delta$ {ylabel} vs $8H_g$:$0H_l$', fontsize=13)
     ax.set_title(title, fontsize=14)
     ax.set_xticks(x)
     ax.set_xticklabels(x_labels, fontsize=11)
@@ -371,16 +372,86 @@ def plot_personalization_benefit(df, metric_name: str, ylabel: str, title: str):
     return fig
 
 
+def plot_delta_per_client(df):
+    """
+    Two-panel figure (Micro-F1 | mAP) showing the delta from the 8G:0L baseline
+    for each client individually and for the global metric.
+
+    X-axis runs left-to-right from 8G:0L (Δ=0, fully global) to 0G:8L (fully local),
+    so the trade-off curve reads naturally as "adding more local heads".
+    """
+    # df already sorted 8G:0L → 0G:8L by load_data
+    x_labels = [f"${r.split('-')[0]}H_g$:${r.split('-')[1]}H_l$" for r in df['ratio']]
+    x = np.arange(len(df))
+
+    baseline = df.iloc[0]  # 8Hg:0Hl row
+
+    clients = ['SPH', 'PTB-XL', 'SXPH', 'G12EC']
+    markers = {'SPH': 'o', 'PTB-XL': 's', 'SXPH': '^', 'G12EC': 'D', 'Global': 'o'}
+    linestyles = {'SPH': '-', 'PTB-XL': '-', 'SXPH': '-', 'G12EC': '-', 'Global': '--'}
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 8), sharey=False)
+
+    for ax, metric_name, ylabel in zip(axes,
+                                        ['micro_f1', 'mAP'],
+                                        ['Micro-F1', 'mAP']):
+        # Per-client delta lines with error bands
+        for client in clients:
+            mc = f'{client}_{metric_name}_mean'
+            sc = f'{client}_{metric_name}_std'
+            deltas = df[mc].values - baseline[mc]
+            stds   = df[sc].values
+            ax.plot(x, deltas,
+                    linestyles[client] + markers[client],
+                    color=COLORS[client], linewidth=2, markersize=6,
+                    label=client, zorder=3)
+            # ax.fill_between(x, deltas - stds, deltas + stds,
+            #                 alpha=0.10, color=COLORS[client])
+
+        # Global delta line (dashed, heavier, drawn last so it sits on top)
+        mc_g = f'global_{metric_name}_mean'
+        sc_g = f'global_{metric_name}_std'
+        deltas_g = df[mc_g].values - baseline[mc_g]
+        stds_g   = df[sc_g].values
+        ax.plot(x, deltas_g, '--o',
+                color=COLORS['Global'], linewidth=2.5, markersize=8,
+                label='Global', zorder=5, markeredgecolor='white',
+                markeredgewidth=0.8)
+        # ax.fill_between(x, deltas_g - stds_g, deltas_g + stds_g,
+        #                 alpha=0.12, color=COLORS['Global'])
+
+        # Reference at Δ = 0 (= 8G:0L performance)
+        ax.axhline(0, color='#444444', linewidth=1.0, linestyle=':', alpha=0.7,
+                   label=r'$8H_g$:$0H_l$ ($\Delta = 0$)')
+
+        # Axis labels and decoration
+        ax.set_xlabel('Head Ratio (Global : Local)')
+        ax.set_ylabel(f'$\\Delta$ {ylabel} vs. $8H_g$:$0H_l$ (pp)')
+        ax.set_title(f'Personalization Gain — {ylabel}')
+        ax.set_xticks(x)
+        ax.set_xticklabels(x_labels, rotation=30, ha='right')
+
+    # Shared legend below both panels
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', ncol=6,
+               bbox_to_anchor=(0.5, -0.02), framealpha=0.9)
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.22)
+    return fig
+
+
 def main():
     parser = argparse.ArgumentParser(description="Plot head ratio results with error bars")
     parser.add_argument("--show", action="store_true", help="Show plots interactively")
+    parser.add_argument("--total_heads", type=int, default=8,
+                        help="Only plot configs where global+local==this value (default: 8)")
     args = parser.parse_args()
 
     # Create output directory
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Load data
-    df = load_data()
+    df = load_data(total_heads=args.total_heads)
     print(f"Loaded data from: {CSV_PATH}")
     print(f"\nData columns: {list(df.columns)}")
     print(f"Rows: {len(df)}")
@@ -449,12 +520,18 @@ def main():
     ]:
         fig = plot_personalization_benefit(
             df, metric_name, ylabel,
-            f'Personalization Benefit vs 8G:0L — {ylabel.split()[0]}',
+            f'Personalization Benefit vs $8H_g$:$0H_l$ — {ylabel.split()[0]}',
         )
         fname = f'head_ratio_personalization_{metric_name}.png'
         fig.savefig(OUTPUT_DIR / fname, dpi=150, bbox_inches='tight')
         print(f"  Saved: {fname}")
         plt.close(fig)
+
+    # === DELTA FROM 8G:0L PLOT ===
+    fig_delta = plot_delta_per_client(df)
+    fig_delta.savefig(OUTPUT_DIR / 'head_ratio_delta_from_baseline.png', dpi=150, bbox_inches='tight')
+    print(f"  Saved: head_ratio_delta_from_baseline.png")
+    plt.close(fig_delta)
 
     print(f"\nAll plots saved to: {OUTPUT_DIR}")
 

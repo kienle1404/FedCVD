@@ -49,6 +49,13 @@ parser.add_argument("--num_heads", type=int, default=8,
                     help="Total number of attention heads (default: 8)")
 parser.add_argument("--global_heads", type=int, default=5,
                     help="Number of global attention heads. Local heads = num_heads - global_heads.")
+parser.add_argument("--fusion_mode", type=str, default="concat",
+                    choices=["concat", "add", "scalar", "gate"],
+                    help="Fusion strategy for combining global and local branches (default: concat)")
+parser.add_argument("--backbone_lr_scale", type=float, default=1.0,
+                    help="Learning rate multiplier for backbone params (default: 1.0)")
+parser.add_argument("--attention_lr_scale", type=float, default=1.0,
+                    help="Learning rate multiplier for attention params (default: 1.0)")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -117,9 +124,9 @@ if __name__ == "__main__":
         for test_dataset in test_datasets
     ]
 
-    # Initialize model with configurable head ratio
-    print(f"Initializing model: {args.model} with {num_heads} total heads ({global_heads} global, {local_heads} local)")
-    model = get_model(args.model, global_heads=global_heads, num_heads=num_heads)
+    # Initialize model with configurable head ratio and fusion mode
+    print(f"Initializing model: {args.model} with {num_heads} total heads ({global_heads} global, {local_heads} local), fusion={args.fusion_mode}")
+    model = get_model(args.model, global_heads=global_heads, num_heads=num_heads, fusion_mode=args.fusion_mode)
 
     # Loss function for multi-label classification
     criterion = nn.BCELoss()
@@ -149,7 +156,10 @@ if __name__ == "__main__":
         "num_heads": num_heads,
         "global_heads": global_heads,
         "local_heads": local_heads,
-        "description": f"Dual Attention Heads - {num_heads} total ({global_heads} global + {local_heads} local)"
+        "fusion_mode": args.fusion_mode,
+        "backbone_lr_scale": args.backbone_lr_scale,
+        "attention_lr_scale": args.attention_lr_scale,
+        "description": f"Dual Attention Heads - {num_heads} total ({global_heads} global + {local_heads} local), fusion={args.fusion_mode}"
     }
     with open(output_path + "setting.json", "w") as f:
         f.write(json.dumps(setting, indent=2))
@@ -182,7 +192,9 @@ if __name__ == "__main__":
         evaluators=client_evaluators,
         optimizer_name=args.optimizer_name,
         device=device,
-        logger=client_loggers
+        logger=client_loggers,
+        backbone_lr_scale=args.backbone_lr_scale,
+        attention_lr_scale=args.attention_lr_scale
     )
 
     # Initialize FL handler (server-side)

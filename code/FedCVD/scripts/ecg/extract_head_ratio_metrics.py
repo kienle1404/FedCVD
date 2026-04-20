@@ -24,6 +24,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent.parent
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "output"
+DOCS_DIR = SCRIPT_DIR / "../../docs"
+DEFAULT_CSV_PATH = DOCS_DIR / "experiments" / "ratio_sweep" / "metrics.csv"
 
 # Client names matching the paper
 CLIENT_NAMES = ["SPH", "PTB-XL", "SXPH", "G12EC"]
@@ -528,8 +530,8 @@ def main():
     parser = argparse.ArgumentParser(description="Extract head ratio experiment metrics with mean ± std")
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_OUTPUT_PATH),
                         help="Path to output directory")
-    parser.add_argument("--csv", type=str, default=None,
-                        help="Save results to CSV file")
+    parser.add_argument("--csv", type=str, default=str(DEFAULT_CSV_PATH),
+                        help="Save results to CSV file (default: docs/experiments/ratio_sweep/metrics.csv)")
     parser.add_argument("--no-std", action="store_true",
                         help="Don't show standard deviation (just mean)")
     args = parser.parse_args()
@@ -582,9 +584,10 @@ def main():
     print_comparison_tables(aggregated_results, show_std=not args.no_std)
     print_summary(aggregated_results)
 
-    # Save to CSV if requested
-    if args.csv:
-        save_to_csv(aggregated_results, args.csv)
+    # Save to CSV (always — default path is docs/experiments/ratio_sweep/metrics.csv)
+    csv_path = Path(args.csv)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    save_to_csv(aggregated_results, str(csv_path))
 
 
 if __name__ == "__main__":

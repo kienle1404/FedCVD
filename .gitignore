@@ -166,3 +166,5 @@ output/
 .claude
 code/FedCVD/wandb
 code/FedCVD/trainers/wandb
+code/FedCVD/scripts/ecg/wandb
+.vscode

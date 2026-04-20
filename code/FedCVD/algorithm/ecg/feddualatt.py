@@ -44,7 +44,7 @@ from utils.evaluation import (
 )
 
 # Naming patterns that identify local (personalized) parameters
-_LOCAL_PATTERNS = ('local_att', 'local_proj')
+_LOCAL_PATTERNS = ('local_att', 'local_proj', 'local_gate', 'local_alpha')
 
 
 def _is_local(name: str) -> bool:
@@ -265,6 +265,42 @@ class FedDualAttSerialClientTrainer(FedAvgSerialClientTrainer):
       5. Zero local positions in model → serialize as clean global_params upload
       6. Restore local params in model for evaluation/saving
     """
+
+    def __init__(self, *args, backbone_lr_scale=1.0, attention_lr_scale=1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.backbone_lr_scale = backbone_lr_scale
+        self.attention_lr_scale = attention_lr_scale
+
+        # Rebuild optimizer with parameter groups if scales differ from 1.0
+        if backbone_lr_scale != 1.0 or attention_lr_scale != 1.0:
+            self._rebuild_optimizer(kwargs.get('optimizer_name', 'SGD'))
+
+    def _rebuild_optimizer(self, optimizer_name='SGD'):
+        """Create optimizer with differential learning rates per component group."""
+        backbone_params = []
+        attention_params = []
+        other_params = []
+
+        for name, param in self._model.named_parameters():
+            if 'feature_extractor' in name:
+                backbone_params.append(param)
+            elif any(k in name for k in ('global_proj', 'global_att',
+                                          'local_proj', 'local_att',
+                                          'local_gate', 'local_alpha')):
+                attention_params.append(param)
+            else:
+                other_params.append(param)
+
+        param_groups = [
+            {'params': backbone_params, 'lr': self.lr * self.backbone_lr_scale},
+            {'params': attention_params, 'lr': self.lr * self.attention_lr_scale},
+            {'params': other_params, 'lr': self.lr},
+        ]
+
+        if optimizer_name == 'SGD':
+            self.optimizer = torch.optim.SGD(param_groups)
+        elif optimizer_name == 'Adam':
+            self.optimizer = torch.optim.Adam(param_groups)
 
     def local_process(self, payload, id_list):
         """

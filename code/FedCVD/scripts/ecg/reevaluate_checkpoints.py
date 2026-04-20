@@ -383,39 +383,32 @@ def find_head_ratio_runs():
         if global_heads is None:
             continue
 
-        # Find seed subdirectories
+        # Find seed subdirectories (skip old-format timestamp dirs without seed prefix)
         for seed_dir in sorted(config_dir.iterdir()):
             if not seed_dir.is_dir() or not seed_dir.name.startswith("seed"):
-                # Could be a timestamp directory (older format without seed prefix)
-                ckpt = seed_dir / "server" / "model.pth"
-                if ckpt.exists():
-                    seed = "unknown"
-                    runs.append({
-                        "config": dirname,
-                        "global_heads": global_heads,
-                        "local_heads": local_heads,
-                        "seed": seed,
-                        "run_dir": seed_dir,
-                        "ckpt_path": ckpt,
-                    })
                 continue
 
             seed = seed_dir.name.replace("seed", "")
 
-            # Find the timestamp subdirectory
-            for ts_dir in sorted(seed_dir.iterdir()):
-                if not ts_dir.is_dir():
-                    continue
-                ckpt = ts_dir / "server" / "model.pth"
-                if ckpt.exists():
-                    runs.append({
-                        "config": dirname,
-                        "global_heads": global_heads,
-                        "local_heads": local_heads,
-                        "seed": seed,
-                        "run_dir": ts_dir,
-                        "ckpt_path": ckpt,
-                    })
+            # Find the latest valid timestamp subdirectory (requires server/metric.json)
+            valid_ts = [
+                ts_dir for ts_dir in sorted(seed_dir.iterdir())
+                if ts_dir.is_dir()
+                and (ts_dir / "server" / "model.pth").exists()
+                and (ts_dir / "server" / "metric.json").exists()
+            ]
+            if not valid_ts:
+                continue
+            ts_dir = valid_ts[-1]  # latest timestamp
+            ckpt = ts_dir / "server" / "model.pth"
+            runs.append({
+                "config": dirname,
+                "global_heads": global_heads,
+                "local_heads": local_heads,
+                "seed": seed,
+                "run_dir": ts_dir,
+                "ckpt_path": ckpt,
+            })
 
     return runs
 
