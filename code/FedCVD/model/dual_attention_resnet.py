@@ -1,16 +1,20 @@
 """
 Dual Attention ResNet for Personalized Federated Learning.
 
-This module implements a hybrid ResNet1D34 + Dual Attention Transformer architecture
+This module implements a hybrid backbone + Dual Attention Transformer architecture
 for ECG classification in federated learning settings. The dual attention mechanism
 splits transformer attention into:
-- Global attention heads (4 heads): Shared across all clients, aggregated via FedAvg
-- Local attention heads (4 heads): Personalized per client, not aggregated
+- Global attention heads: Shared across all clients, aggregated via FedAvg
+- Local attention heads: Personalized per client, not aggregated
+
+Supports two backbone options:
+- ResNet1D-34 (default): trained from scratch, output (batch, 512, ~156)
+- ECGFounder (Net1D): pre-trained on 10.7M ECGs, output (batch, 1024, 20)
 
 Architecture:
     Input (batch, 12, 5000)
-      → ResNet1D Feature Extractor (global)
-      → Output (batch, 512, ~156)
+      → Backbone Feature Extractor (global, optionally frozen)
+      → Projection layer (if backbone output dim != d_model)
       → Positional Encoding (global)
       → Dual Attention Transformer Blocks (mixed: global + local)
       → Global Average Pooling (global)
@@ -19,8 +23,11 @@ Architecture:
 """
 
 import math
+import os
+import sys
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn import Module
 
 
@@ -153,6 +160,74 @@ class ResNet1DFeatureExtractor(Module):
         x = self.layer4(x)
 
         return x
+
+
+class ECGFounderBackbone(Module):
+    """
+    ECGFounder (Net1D) backbone wrapper for pre-trained feature extraction.
+
+    Loads the Net1D architecture from ECGFounder and extracts pre-GAP features.
+    Pre-trained on 10.7M ECGs (150-class classification).
+
+    Input: (batch, 12, 5000)
+    Output: (batch, 1024, 20) — 1024 channels, 20 temporal positions
+    """
+    def __init__(self, pretrained_path=None, freeze=True):
+        super(ECGFounderBackbone, self).__init__()
+
+        # Import Net1D from ECGFounder
+        ecgfounder_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))))),
+            'ECGFounder'
+        )
+        if ecgfounder_dir not in sys.path:
+            sys.path.insert(0, ecgfounder_dir)
+        from net1d import Net1D
+
+        self.net1d = Net1D(
+            in_channels=12, base_filters=64, ratio=1,
+            filter_list=[64, 160, 160, 400, 400, 1024, 1024],
+            m_blocks_list=[2, 2, 2, 3, 3, 4, 4],
+            kernel_size=16, stride=2, groups_width=16,
+            n_classes=150, use_bn=False, use_do=False
+        )
+
+        # Load pre-trained weights
+        if pretrained_path is not None:
+            ckpt = torch.load(pretrained_path, map_location='cpu', weights_only=False)
+            state_dict = ckpt['state_dict'] if 'state_dict' in ckpt else ckpt
+            self.net1d.load_state_dict(state_dict, strict=True)
+            print(f"ECGFounder weights loaded from {pretrained_path}")
+
+        # Remove the classification head (we only need features)
+        del self.net1d.dense
+
+        # Freeze backbone if requested
+        if freeze:
+            for param in self.net1d.parameters():
+                param.requires_grad = False
+            self.net1d.eval()
+            print("ECGFounder backbone frozen (no gradient updates)")
+
+        self.freeze = freeze
+        self.out_channels = 1024
+
+    def train(self, mode=True):
+        """Override train to keep frozen backbone in eval mode."""
+        super().train(mode)
+        if self.freeze:
+            self.net1d.eval()
+        return self
+
+    def forward(self, x):
+        """Extract pre-GAP features from Net1D."""
+        out = self.net1d.first_conv(x)
+        out = self.net1d.first_bn(out)
+        out = self.net1d.first_activation(out)
+        for stage in self.net1d.stage_list:
+            out = stage(out)
+        return out  # (batch, 1024, 20)
 
 
 class DualAttentionTransformerBlock(Module):
@@ -334,7 +409,8 @@ class DualAttentionResNet1D(Module):
     """
     def __init__(self, input_channels=12, d_model=512, num_transformer_blocks=2,
                  num_heads=8, global_heads=None, ff_dim=2048, dropout=0.1,
-                 num_classes=20, task='multilabel', fusion_mode='concat'):
+                 num_classes=20, task='multilabel', fusion_mode='concat',
+                 backbone='resnet1d34', pretrained_path=None, freeze_backbone=False):
         super(DualAttentionResNet1D, self).__init__()
 
         # Handle global_heads configuration
@@ -347,9 +423,24 @@ class DualAttentionResNet1D(Module):
         self.local_heads = local_heads
         self.num_heads = num_heads
         self.fusion_mode = fusion_mode
+        self.backbone_type = backbone
 
-        # ResNet feature extractor (GLOBAL - aggregated in FL)
-        self.feature_extractor = ResNet1DFeatureExtractor(input_channels)
+        # Backbone feature extractor (GLOBAL - aggregated in FL, or frozen)
+        if backbone == 'ecgfounder':
+            self.feature_extractor = ECGFounderBackbone(
+                pretrained_path=pretrained_path,
+                freeze=freeze_backbone
+            )
+            backbone_out_dim = 1024
+        else:  # resnet1d34
+            self.feature_extractor = ResNet1DFeatureExtractor(input_channels)
+            backbone_out_dim = 512
+
+        # Projection layer if backbone output dim != d_model
+        if backbone_out_dim != d_model:
+            self.backbone_proj = nn.Linear(backbone_out_dim, d_model)
+        else:
+            self.backbone_proj = None
 
         # Positional encoding (GLOBAL)
         self.positional_encoding = PositionalEncoding(d_model, dropout, max_len=500)
@@ -390,11 +481,15 @@ class DualAttentionResNet1D(Module):
         Returns:
             output: Output tensor (batch, 20) - multi-label predictions
         """
-        # ResNet feature extraction
-        features = self.feature_extractor(x)  # (batch, 512, ~156)
+        # Backbone feature extraction
+        features = self.feature_extractor(x)  # (batch, C, T) where C=512/1024, T=~156/20
 
         # Transpose for transformer: (batch, seq_len, features)
-        features = features.transpose(1, 2)  # (batch, ~156, 512)
+        features = features.transpose(1, 2)  # (batch, T, C)
+
+        # Project to d_model if needed (e.g., ECGFounder 1024 → 512)
+        if self.backbone_proj is not None:
+            features = self.backbone_proj(features)  # (batch, T, d_model)
 
         # Add positional encoding
         features = self.positional_encoding(features)
@@ -418,7 +513,9 @@ class DualAttentionResNet1D(Module):
 
 def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_blocks=2,
                             num_heads=8, global_heads=None, ff_dim=2048, dropout=0.1,
-                            num_classes=20, task='multilabel', fusion_mode='concat'):
+                            num_classes=20, task='multilabel', fusion_mode='concat',
+                            backbone='resnet1d34', pretrained_path=None,
+                            freeze_backbone=False):
     """
     Factory function to create a DualAttentionResNet1D model.
 
@@ -429,21 +526,17 @@ def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_bloc
         num_heads: Total attention heads (default: 8)
         global_heads: Number of global attention heads (default: None = num_heads // 2).
                       Local heads = num_heads - global_heads.
-                      Valid configurations: 4-4, 5-3, 6-2, 7-1 (global-local)
         ff_dim: Feed-forward network dimension (default: 2048)
         dropout: Dropout rate (default: 0.1)
         num_classes: Number of output classes (default: 20)
         task: Task type - 'multilabel' or 'multiclass' (default: 'multilabel')
+        fusion_mode: Fusion strategy for combining branches (default: 'concat')
+        backbone: Backbone type - 'resnet1d34' or 'ecgfounder' (default: 'resnet1d34')
+        pretrained_path: Path to pre-trained weights (for ecgfounder backbone)
+        freeze_backbone: Whether to freeze backbone parameters (default: False)
 
     Returns:
         model: DualAttentionResNet1D instance
-
-    Example:
-        >>> model = dual_attention_resnet1d()  # Default 4-4 split
-        >>> model = dual_attention_resnet1d(global_heads=6)  # 6-2 split
-        >>> x = torch.randn(8, 12, 5000)
-        >>> y = model(x)
-        >>> print(y.shape)  # torch.Size([8, 20])
     """
     return DualAttentionResNet1D(
         input_channels=input_channels,
@@ -455,7 +548,10 @@ def dual_attention_resnet1d(input_channels=12, d_model=512, num_transformer_bloc
         dropout=dropout,
         num_classes=num_classes,
         task=task,
-        fusion_mode=fusion_mode
+        fusion_mode=fusion_mode,
+        backbone=backbone,
+        pretrained_path=pretrained_path,
+        freeze_backbone=freeze_backbone
     )
 
 

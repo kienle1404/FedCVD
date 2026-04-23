@@ -56,6 +56,13 @@ parser.add_argument("--backbone_lr_scale", type=float, default=1.0,
                     help="Learning rate multiplier for backbone params (default: 1.0)")
 parser.add_argument("--attention_lr_scale", type=float, default=1.0,
                     help="Learning rate multiplier for attention params (default: 1.0)")
+parser.add_argument("--backbone", type=str, default="resnet1d34",
+                    choices=["resnet1d34", "ecgfounder"],
+                    help="Backbone architecture (default: resnet1d34)")
+parser.add_argument("--pretrained_path", type=str, default=None,
+                    help="Path to pre-trained backbone weights (for ecgfounder)")
+parser.add_argument("--freeze_backbone", action="store_true",
+                    help="Freeze backbone parameters (no gradient updates)")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -91,7 +98,10 @@ if __name__ == "__main__":
     output_path = args.output_path
     input_path = input_path if input_path[-1] == "/" else input_path + "/"
     output_path = output_path if output_path[-1] == "/" else output_path + "/"
-    output_path = output_path + args.model + "/" + args.mode + f"/global{global_heads}_local{local_heads}/seed{args.seed}/" + datetime.now().strftime("%Y%m%d%H%M%S") + "/"
+    backbone_tag = args.backbone
+    if args.freeze_backbone:
+        backbone_tag += "_frozen"
+    output_path = output_path + args.model + "/" + args.mode + f"/{backbone_tag}/global{global_heads}_local{local_heads}/seed{args.seed}/" + datetime.now().strftime("%Y%m%d%H%M%S") + "/"
     clients = args.clients
 
     # Create datasets for each client
@@ -124,9 +134,12 @@ if __name__ == "__main__":
         for test_dataset in test_datasets
     ]
 
-    # Initialize model with configurable head ratio and fusion mode
-    print(f"Initializing model: {args.model} with {num_heads} total heads ({global_heads} global, {local_heads} local), fusion={args.fusion_mode}")
-    model = get_model(args.model, global_heads=global_heads, num_heads=num_heads, fusion_mode=args.fusion_mode)
+    # Initialize model with configurable head ratio, fusion mode, and backbone
+    print(f"Initializing model: {args.model} with {num_heads} total heads ({global_heads} global, {local_heads} local), fusion={args.fusion_mode}, backbone={args.backbone}")
+    model = get_model(args.model, global_heads=global_heads, num_heads=num_heads,
+                      fusion_mode=args.fusion_mode, backbone=args.backbone,
+                      pretrained_path=args.pretrained_path,
+                      freeze_backbone=args.freeze_backbone)
 
     # Loss function for multi-label classification
     criterion = nn.BCELoss()
@@ -157,9 +170,12 @@ if __name__ == "__main__":
         "global_heads": global_heads,
         "local_heads": local_heads,
         "fusion_mode": args.fusion_mode,
+        "backbone": args.backbone,
+        "pretrained_path": args.pretrained_path,
+        "freeze_backbone": args.freeze_backbone,
         "backbone_lr_scale": args.backbone_lr_scale,
         "attention_lr_scale": args.attention_lr_scale,
-        "description": f"Dual Attention Heads - {num_heads} total ({global_heads} global + {local_heads} local), fusion={args.fusion_mode}"
+        "description": f"Dual Attention Heads - {num_heads} total ({global_heads} global + {local_heads} local), fusion={args.fusion_mode}, backbone={args.backbone}"
     }
     with open(output_path + "setting.json", "w") as f:
         f.write(json.dumps(setting, indent=2))
